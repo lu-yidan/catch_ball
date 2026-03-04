@@ -1,0 +1,12 @@
+# RealSense SDK Python 绑定
+# 注意：pyrealsense2 通过 conda 安装更稳定（见 README）
+pyrealsense2>=2.54.0
+
+# YOLOv8
+ultralytics>=8.0.0
+
+# 图像处理
+opencv-python>=4.8.0
+
+# 数值计算（ultralytics 会自动依赖，但显式声明版本）
+numpy>=1.24.0
