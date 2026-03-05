@@ -172,8 +172,8 @@ def main():
     # ── RealSense ─────────────────────────────────────────────────────────────
     pipeline = rs.pipeline()
     cfg = rs.config()
-    cfg.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 30)
-    cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16,  30)
+    cfg.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 60)
+    cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16,  60)
 
     def _start_pipeline():
         """启动 pipeline，若帧超时则自动硬件重置相机后重试（无需拔线）。"""
@@ -250,6 +250,7 @@ def main():
             # YOLO 追踪
             results   = model.track(color, conf=CONF_THRESHOLD,
                                     persist=True, verbose=False)
+            # results   = model(color)
             best_box  = None
             best_conf = 0.0
             for result in results:
