@@ -91,11 +91,29 @@ python camera_ball.py --no-viz
 # 手动指定关节角（无 ROS2 时调试用，单位 rad）
 python camera_ball.py --no-viz --q-head 0.3 --q-wp 0.1
 
-# 换精度更高的模型
-python camera_ball.py --model yolov8s.pt
+# 指定 YOLO 模型（见下方模型选择）
+python camera_ball.py --model yolo11m.pt
 ```
 
 有 ROS2 时，关节角自动从 `/lowstate` 话题读取，无需手动指定。
+
+---
+
+## 模型选择
+
+首次运行指定模型会自动下载。推荐优先试 `yolo11m`。
+
+| 模型 | 参数量 | mAP | 说明 |
+|---|---|---|---|
+| `yolov8n.pt` | 3M | 37.3 | 默认，最快 |
+| `yolov8s.pt` | 11M | 44.9 | |
+| `yolov8m.pt` | 26M | 50.2 | |
+| `yolo11s.pt` | 9M | 47.0 | 新架构，比 yolov8s 快且准 |
+| `yolo11m.pt` | 20M | 51.5 | **推荐** |
+| `yolo11l.pt` | 25M | 53.4 | |
+| `yolo11x.pt` | 57M | 54.7 | 精度最高，最慢 |
+
+> 模型文件（`*.pt`）已加入 `.gitignore`，不提交到仓库。
 
 ---
 

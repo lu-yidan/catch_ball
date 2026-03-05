@@ -158,6 +158,17 @@ def main():
     print(f"[INFO] Loading YOLO model: {args.model}")
     model = YOLO(args.model)
 
+    # 打印模型参数量，并用随机图热身测速（3次取均值）
+    info = model.info(verbose=False)
+    dummy = np.zeros((480, 848, 3), dtype=np.uint8)
+    model(dummy, verbose=False)  # 第一次含编译开销，不计入
+    t0 = time.perf_counter()
+    for _ in range(5):
+        model(dummy, verbose=False)
+    ms_per_frame = (time.perf_counter() - t0) / 5 * 1000
+    print(f"[INFO] Model inference: {ms_per_frame:.1f} ms/frame  "
+          f"(≈ {1000/ms_per_frame:.0f} FPS upper bound)")
+
     # ── RealSense ─────────────────────────────────────────────────────────────
     pipeline = rs.pipeline()
     cfg = rs.config()
@@ -277,13 +288,16 @@ def main():
 
                     if viz:
                         # 绿色=检测到，橙色=coasting（保留上帧位置）
-                        color = (0, 255, 0) if detected else (0, 165, 255)
-                        label = (f"{'Ball' if detected else 'Coast'} "
-                                 f"base={p_base_str}  {best_conf:.2f}")
+                        color  = (0, 255, 0) if detected else (0, 165, 255)
+                        tag    = "Ball" if detected else "Coast"
+                        line1  = f"{tag} cam {p_cam_str}  {best_conf:.2f}"
+                        line2  = f"    base{p_base_str}"
+                        top    = max(y1 - 30, 30)
                         cv2.rectangle(color_image, (x1, y1), (x2, y2), color, 2)
-                        cv2.putText(color_image, label,
-                                    (x1, max(y1 - 10, 20)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+                        cv2.putText(color_image, line1, (x1, top),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
+                        cv2.putText(color_image, line2, (x1, top + 20),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
                         cv2.circle(color_image, (cx, cy), 5, (0, 0, 255), -1)
 
             if best_box is None:
