@@ -210,27 +210,45 @@ def main():
     else:
         print("[INFO] Visualization OFF  (press Ctrl+C to quit)")
 
-    # ── 状态 ─────────────────────────────────────────────────────────────────
-    center_ema  = None
-    last_bbox   = None   # coasting 用：上一次检测到的 bbox
-    miss_count  = 0      # 连续漏检帧数
-    fps_counter = _FPS()
+    # ── 线程间共享状态 ────────────────────────────────────────────────────────
+    # 相机线程写，YOLO 线程读
+    buf_lock      = threading.Lock()
+    buf_color     = None   # np.ndarray
+    buf_depth     = None   # np.ndarray (uint16, mm)
+    buf_updated   = threading.Event()
 
-    try:
-        while True:
-            # ── 获取对齐帧 ────────────────────────────────────────────────────
-            frames         = pipeline.wait_for_frames()
-            aligned        = align.process(frames)
-            color_frame    = aligned.get_color_frame()
-            depth_frame    = aligned.get_depth_frame()
-            if not color_frame or not depth_frame:
+    # YOLO 线程写，主线程读
+    res_lock      = threading.Lock()
+    res_bbox      = None   # (x1,y1,x2,y2) 或 None
+    res_conf      = 0.0
+    res_cam_str   = "—"
+    res_base_str  = "—"
+    res_detected  = False
+    res_coasting  = False
+
+    stop_flag = threading.Event()
+
+    # ── YOLO 线程 ─────────────────────────────────────────────────────────────
+    def yolo_worker():
+        nonlocal res_bbox, res_conf, res_cam_str, res_base_str
+        nonlocal res_detected, res_coasting
+
+        center_ema = None
+        last_bbox  = None
+        miss_count = 0
+        yolo_fps   = _FPS()
+
+        while not stop_flag.is_set():
+            if not buf_updated.wait(timeout=1.0):
                 continue
+            buf_updated.clear()
 
-            color_image = np.asanyarray(color_frame.get_data())
-            fps_counter.tick()
+            with buf_lock:
+                color = buf_color.copy()
+                depth = buf_depth.copy()   # uint16 numpy array
 
-            # ── YOLO 追踪（ByteTrack，跨帧保持 ID）────────────────────────────
-            results   = model.track(color_image, conf=CONF_THRESHOLD,
+            # YOLO 追踪
+            results   = model.track(color, conf=CONF_THRESHOLD,
                                     persist=True, verbose=False)
             best_box  = None
             best_conf = 0.0
@@ -241,69 +259,75 @@ def main():
                         if c > best_conf:
                             best_conf, best_box = c, box
 
-            # ── 处理检测结果 ──────────────────────────────────────────────────
-            p_cam_str  = "—"
-            p_base_str = "—"
-            detected   = False
-            coasting   = False
+            yolo_fps.tick()
 
             if best_box is not None:
                 miss_count = 0
                 last_bbox  = tuple(map(int, best_box.xyxy[0]))
 
+            p_cam_str  = "—"
+            p_base_str = "—"
+            detected   = False
+            coasting   = False
+
             if last_bbox is not None and miss_count <= COAST_FRAMES:
                 x1, y1, x2, y2 = last_bbox
-                cx, cy  = (x1 + x2) // 2, (y1 + y2) // 2
-                depth_m = get_depth_at_center(depth_frame, cx, cy)
+                cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                h, w   = depth.shape
+
+                # 从 uint16 depth array 中采样（单位 mm → m）
+                x0d = max(0, cx - DEPTH_SAMPLE_RADIUS)
+                x1d = min(w - 1, cx + DEPTH_SAMPLE_RADIUS)
+                y0d = max(0, cy - DEPTH_SAMPLE_RADIUS)
+                y1d = min(h - 1, cy + DEPTH_SAMPLE_RADIUS)
+                patch   = depth[y0d:y1d+1, x0d:x1d+1].astype(np.float32) * 0.001
+                valid   = patch[(patch > DEPTH_MIN) & (patch < DEPTH_MAX)]
+                depth_m = float(np.median(valid)) if len(valid) > 0 else 0.0
 
                 if depth_m > 0:
                     p_opt     = rs.rs2_deproject_pixel_to_point(
-                        intrinsics, [cx, cy], depth_m
-                    )  # 光学坐标系：Z前、X右、Y下
+                        intrinsics, [cx, cy], depth_m)
                     p_cam_arr = optical_to_body(p_opt)
 
                     if center_ema is None:
                         center_ema = p_cam_arr.copy()
                     elif np.linalg.norm(p_cam_arr - center_ema) < EMA_GATE:
-                        center_ema = EMA_ALPHA * p_cam_arr + (1 - EMA_ALPHA) * center_ema
+                        center_ema = (EMA_ALPHA * p_cam_arr
+                                      + (1 - EMA_ALPHA) * center_ema)
 
                     p_base = transform_point_camera_to_base(
                         center_ema,
                         joint.q_wy, joint.q_wr, joint.q_wp, joint.q_head,
                     )
 
-                    p_cam_str  = f"(X={center_ema[0]:+.3f}, Y={center_ema[1]:+.3f}, Z={center_ema[2]:+.3f})"
-                    p_base_str = f"({p_base[0]:+.3f}, {p_base[1]:+.3f}, {p_base[2]:+.3f})"
+                    p_cam_str  = (f"(X={center_ema[0]:+.3f}, "
+                                  f"Y={center_ema[1]:+.3f}, "
+                                  f"Z={center_ema[2]:+.3f})")
+                    p_base_str = (f"({p_base[0]:+.3f}, "
+                                  f"{p_base[1]:+.3f}, "
+                                  f"{p_base[2]:+.3f})")
                     detected   = best_box is not None
                     coasting   = best_box is None
 
-                    # LCM 发布（检测到或 coasting 均发布）
                     if lc is not None:
                         lcm_msg = lidar_lcmt()
                         lcm_msg.offset_time = int(time.time() * 1e6)
                         lcm_msg.x, lcm_msg.y, lcm_msg.z = (
-                            float(p_base[0]), float(p_base[1]), float(p_base[2])
-                        )
+                            float(p_base[0]), float(p_base[1]), float(p_base[2]))
                         lc.publish("camera_ball_lcmt", lcm_msg.encode())
-
-                    if viz:
-                        # 绿色=检测到，橙色=coasting（保留上帧位置）
-                        color  = (0, 255, 0) if detected else (0, 165, 255)
-                        tag    = "Ball" if detected else "Coast"
-                        line1  = f"{tag} cam {p_cam_str}  {best_conf:.2f}"
-                        line2  = f"    base{p_base_str}"
-                        top    = max(y1 - 30, 30)
-                        cv2.rectangle(color_image, (x1, y1), (x2, y2), color, 2)
-                        cv2.putText(color_image, line1, (x1, top),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
-                        cv2.putText(color_image, line2, (x1, top + 20),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
-                        cv2.circle(color_image, (cx, cy), 5, (0, 0, 255), -1)
 
             if best_box is None:
                 miss_count += 1
 
-            # ── 终端输出 ──────────────────────────────────────────────────────
+            with res_lock:
+                res_bbox     = last_bbox if (miss_count <= COAST_FRAMES) else None
+                res_conf     = best_conf
+                res_cam_str  = p_cam_str
+                res_base_str = p_base_str
+                res_detected = detected
+                res_coasting = coasting
+
+            # 终端输出（含 YOLO 实际帧率）
             if detected:
                 status = "BALL "
             elif coasting:
@@ -312,17 +336,67 @@ def main():
                 status = "     "
             print(
                 f"\r[{status}] cam={p_cam_str}  base={p_base_str}  "
-                f"FPS={fps_counter.fps:5.1f}",
-                end="", flush=True
+                f"YOLO={yolo_fps.fps:4.1f}fps",
+                end="", flush=True,
             )
 
-            # ── 可视化 ────────────────────────────────────────────────────────
+    yolo_thread = threading.Thread(target=yolo_worker, daemon=True)
+    yolo_thread.start()
+
+    # ── 主线程：相机采集 + 显示（全速运行）─────────────────────────────────────
+    cam_fps = _FPS()
+    try:
+        while True:
+            frames  = pipeline.wait_for_frames()
+            aligned = align.process(frames)
+            cf      = aligned.get_color_frame()
+            df      = aligned.get_depth_frame()
+            if not cf or not df:
+                continue
+
+            color_image  = np.asanyarray(cf.get_data())
+            depth_array  = np.asanyarray(df.get_data())   # uint16
+
+            with buf_lock:
+                buf_color = color_image.copy()
+                buf_depth = depth_array
+            buf_updated.set()
+
+            cam_fps.tick()
+
+            # ── 叠加最新检测结果 ──────────────────────────────────────────────
             if viz:
-                cv2.putText(color_image, f"FPS: {fps_counter.fps:.1f}", (20, 40),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
-                if not detected and not coasting:
+                with res_lock:
+                    bbox     = res_bbox
+                    conf     = res_conf
+                    cam_str  = res_cam_str
+                    base_str = res_base_str
+                    detected = res_detected
+                    coasting = res_coasting
+
+                if bbox is not None:
+                    x1, y1, x2, y2 = bbox
+                    cx, cy  = (x1 + x2) // 2, (y1 + y2) // 2
+                    color   = (0, 255, 0) if detected else (0, 165, 255)
+                    tag     = "Ball" if detected else "Coast"
+                    top     = max(y1 - 30, 30)
+                    cv2.rectangle(color_image, (x1, y1), (x2, y2), color, 2)
+                    cv2.putText(color_image,
+                                f"{tag} cam {cam_str}  {conf:.2f}",
+                                (x1, top),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
+                    cv2.putText(color_image,
+                                f"     base{base_str}",
+                                (x1, top + 20),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.52, color, 2)
+                    cv2.circle(color_image, (cx, cy), 5, (0, 0, 255), -1)
+                else:
                     cv2.putText(color_image, "No ball", (20, 80),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+                cv2.putText(color_image,
+                            f"CAM {cam_fps.fps:.1f}fps",
+                            (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
                 cv2.imshow("camera_ball", color_image)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
@@ -330,6 +404,8 @@ def main():
     except KeyboardInterrupt:
         print("\n[INFO] Interrupted.")
     finally:
+        stop_flag.set()
+        yolo_thread.join(timeout=2)
         pipeline.stop()
         cv2.destroyAllWindows()
         if HAS_ROS2:
