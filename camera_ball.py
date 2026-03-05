@@ -47,12 +47,13 @@ except ImportError:
 
 # ── 检测参数 ───────────────────────────────────────────────────────────────────
 SPORTS_BALL_CLASS_ID = 32
-CONF_THRESHOLD       = 0.4
+CONF_THRESHOLD       = 0.3   # 略低阈值，提升召回率
 DEPTH_SAMPLE_RADIUS  = 5
 DEPTH_MIN            = 0.1   # 米
 DEPTH_MAX            = 10.0  # 米
 EMA_ALPHA            = 0.6   # 指数滑动平均系数，越大越跟当前值
 EMA_GATE             = 0.6   # 跳变门限（米），超过则不更新 EMA
+COAST_FRAMES         = 10    # YOLO 漏检时保留最后位置的帧数
 
 
 # ── 深度采样 ───────────────────────────────────────────────────────────────────
@@ -162,8 +163,27 @@ def main():
     cfg = rs.config()
     cfg.enable_stream(rs.stream.color, 848, 480, rs.format.bgr8, 30)
     cfg.enable_stream(rs.stream.depth, 848, 480, rs.format.z16,  30)
-    print("[INFO] Starting RealSense pipeline...")
-    profile = pipeline.start(cfg)
+
+    def _start_pipeline():
+        """启动 pipeline，若帧超时则自动硬件重置相机后重试（无需拔线）。"""
+        for attempt in range(2):
+            print(f"[INFO] Starting RealSense pipeline (attempt {attempt + 1})...")
+            profile = pipeline.start(cfg)
+            try:
+                pipeline.wait_for_frames(timeout_ms=5000)
+                return profile
+            except RuntimeError:
+                print("[WARN] Frame timeout — performing hardware reset...")
+                pipeline.stop()
+                ctx = rs.context()
+                devs = ctx.query_devices()
+                if len(devs) == 0:
+                    raise RuntimeError("No RealSense device found.")
+                devs[0].hardware_reset()
+                time.sleep(3)
+        raise RuntimeError("RealSense failed to start after hardware reset.")
+
+    profile = _start_pipeline()
 
     align      = rs.align(rs.stream.color)
     intrinsics = (
@@ -180,7 +200,9 @@ def main():
         print("[INFO] Visualization OFF  (press Ctrl+C to quit)")
 
     # ── 状态 ─────────────────────────────────────────────────────────────────
-    center_ema = None
+    center_ema  = None
+    last_bbox   = None   # coasting 用：上一次检测到的 bbox
+    miss_count  = 0      # 连续漏检帧数
     fps_counter = _FPS()
 
     try:
@@ -196,9 +218,10 @@ def main():
             color_image = np.asanyarray(color_frame.get_data())
             fps_counter.tick()
 
-            # ── YOLO 推理 ─────────────────────────────────────────────────────
-            results  = model(color_image, conf=CONF_THRESHOLD, verbose=False)
-            best_box = None
+            # ── YOLO 追踪（ByteTrack，跨帧保持 ID）────────────────────────────
+            results   = model.track(color_image, conf=CONF_THRESHOLD,
+                                    persist=True, verbose=False)
+            best_box  = None
             best_conf = 0.0
             for result in results:
                 for box in result.boxes:
@@ -208,28 +231,31 @@ def main():
                             best_conf, best_box = c, box
 
             # ── 处理检测结果 ──────────────────────────────────────────────────
-            p_cam_str   = "—"
-            p_base_str  = "—"
-            detected    = False
+            p_cam_str  = "—"
+            p_base_str = "—"
+            detected   = False
+            coasting   = False
 
             if best_box is not None:
-                x1, y1, x2, y2 = map(int, best_box.xyxy[0])
-                cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                miss_count = 0
+                last_bbox  = tuple(map(int, best_box.xyxy[0]))
+
+            if last_bbox is not None and miss_count <= COAST_FRAMES:
+                x1, y1, x2, y2 = last_bbox
+                cx, cy  = (x1 + x2) // 2, (y1 + y2) // 2
                 depth_m = get_depth_at_center(depth_frame, cx, cy)
 
                 if depth_m > 0:
-                    p_opt = rs.rs2_deproject_pixel_to_point(
+                    p_opt     = rs.rs2_deproject_pixel_to_point(
                         intrinsics, [cx, cy], depth_m
-                    )  # [X, Y, Z] 光学坐标系：Z前、X右、Y下
-
-                    # 光学系 → body 系（URDF REP-103：X前、Y左、Z上）
+                    )  # 光学坐标系：Z前、X右、Y下
                     p_cam_arr = optical_to_body(p_opt)
+
                     if center_ema is None:
                         center_ema = p_cam_arr.copy()
                     elif np.linalg.norm(p_cam_arr - center_ema) < EMA_GATE:
                         center_ema = EMA_ALPHA * p_cam_arr + (1 - EMA_ALPHA) * center_ema
 
-                    # 坐标转换 → pelvis/base
                     p_base = transform_point_camera_to_base(
                         center_ema,
                         joint.q_wy, joint.q_wr, joint.q_wp, joint.q_head,
@@ -237,9 +263,10 @@ def main():
 
                     p_cam_str  = f"(X={center_ema[0]:+.3f}, Y={center_ema[1]:+.3f}, Z={center_ema[2]:+.3f})"
                     p_base_str = f"({p_base[0]:+.3f}, {p_base[1]:+.3f}, {p_base[2]:+.3f})"
-                    detected = True
+                    detected   = best_box is not None
+                    coasting   = best_box is None
 
-                    # LCM 发布
+                    # LCM 发布（检测到或 coasting 均发布）
                     if lc is not None:
                         lcm_msg = lidar_lcmt()
                         lcm_msg.offset_time = int(time.time() * 1e6)
@@ -249,16 +276,26 @@ def main():
                         lc.publish("camera_ball_lcmt", lcm_msg.encode())
 
                     if viz:
-                        label = (f"Ball  cam={p_cam_str}  "
+                        # 绿色=检测到，橙色=coasting（保留上帧位置）
+                        color = (0, 255, 0) if detected else (0, 165, 255)
+                        label = (f"{'Ball' if detected else 'Coast'} "
                                  f"base={p_base_str}  {best_conf:.2f}")
-                        cv2.rectangle(color_image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                        cv2.rectangle(color_image, (x1, y1), (x2, y2), color, 2)
                         cv2.putText(color_image, label,
                                     (x1, max(y1 - 10, 20)),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 2)
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
                         cv2.circle(color_image, (cx, cy), 5, (0, 0, 255), -1)
 
+            if best_box is None:
+                miss_count += 1
+
             # ── 终端输出 ──────────────────────────────────────────────────────
-            status = "BALL" if detected else "    "
+            if detected:
+                status = "BALL "
+            elif coasting:
+                status = "COAST"
+            else:
+                status = "     "
             print(
                 f"\r[{status}] cam={p_cam_str}  base={p_base_str}  "
                 f"FPS={fps_counter.fps:5.1f}",
@@ -267,10 +304,9 @@ def main():
 
             # ── 可视化 ────────────────────────────────────────────────────────
             if viz:
-                fps_text = f"FPS: {fps_counter.fps:.1f}"
-                cv2.putText(color_image, fps_text, (20, 40),
+                cv2.putText(color_image, f"FPS: {fps_counter.fps:.1f}", (20, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 200, 255), 2)
-                if not detected:
+                if not detected and not coasting:
                     cv2.putText(color_image, "No ball", (20, 80),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
                 cv2.imshow("camera_ball", color_image)
