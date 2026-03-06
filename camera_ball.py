@@ -120,9 +120,11 @@ class _FPS:
 
 def main():
     parser = argparse.ArgumentParser(description="RealSense 足球检测 → base 坐标系")
-    parser.add_argument("--no-viz",  action="store_true",  help="关闭 OpenCV 可视化窗口")
-    parser.add_argument("--model",   default="yolov8n.pt", help="YOLO 模型路径")
-    parser.add_argument("--imgsz",   type=int, default=480, help="YOLO 推理输入尺寸（越小越快）")
+    parser.add_argument("--no-viz",    action="store_true", help="关闭 OpenCV 可视化窗口")
+    parser.add_argument("--model",     default="yolov8n.pt", help="YOLO 模型路径")
+    parser.add_argument("--imgsz",     type=int, default=480, help="YOLO 推理输入尺寸（越小越快）")
+    parser.add_argument("--no-ema",    action="store_true", help="关闭 EMA 位置滤波，直接用原始测量值")
+    parser.add_argument("--no-vel",    action="store_true", help="关闭速度外推，显示框不做位置预测")
     parser.add_argument("--q-wy",    type=float, default=0.0,      metavar="RAD")
     parser.add_argument("--q-wr",    type=float, default=0.0,      metavar="RAD")
     parser.add_argument("--q-wp",    type=float, default=0.0,      metavar="RAD")
@@ -338,7 +340,9 @@ def main():
                         intrinsics, [cx, cy], depth_m)
                     p_cam_arr = optical_to_body(p_opt)
 
-                    if center_ema is None:
+                    if args.no_ema:
+                        center_ema = p_cam_arr.copy()
+                    elif center_ema is None:
                         center_ema = p_cam_arr.copy()
                     elif np.linalg.norm(p_cam_arr - center_ema) < EMA_GATE:
                         center_ema = (EMA_ALPHA * p_cam_arr
@@ -434,10 +438,10 @@ def main():
                 if bbox is not None:
                     x1, y1, x2, y2 = bbox
                     # 速度外推：将 bbox 向前平移 Δt × velocity
-                    dt  = time.perf_counter() - vel_t
-                    dx  = int(vx * dt)
-                    dy  = int(vy * dt)
-                    x1, y1, x2, y2 = x1+dx, y1+dy, x2+dx, y2+dy
+                    if not args.no_vel:
+                        dt = time.perf_counter() - vel_t
+                        dx, dy = int(vx * dt), int(vy * dt)
+                        x1, y1, x2, y2 = x1+dx, y1+dy, x2+dx, y2+dy
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
                     color = (0, 255, 0) if detected else (0, 165, 255)
