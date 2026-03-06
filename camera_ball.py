@@ -122,6 +122,7 @@ def main():
     parser = argparse.ArgumentParser(description="RealSense 足球检测 → base 坐标系")
     parser.add_argument("--no-viz",  action="store_true",  help="关闭 OpenCV 可视化窗口")
     parser.add_argument("--model",   default="yolov8n.pt", help="YOLO 模型路径")
+    parser.add_argument("--imgsz",   type=int, default=480, help="YOLO 推理输入尺寸（越小越快）")
     parser.add_argument("--q-wy",    type=float, default=0.0,      metavar="RAD")
     parser.add_argument("--q-wr",    type=float, default=0.0,      metavar="RAD")
     parser.add_argument("--q-wp",    type=float, default=0.0,      metavar="RAD")
@@ -225,18 +226,49 @@ def main():
     res_base_str  = "—"
     res_detected  = False
     res_coasting  = False
+    res_yolo_fps  = 0.0
+    # 速度外推：最近两次检测的 (时间戳, cx, cy)
+    res_vel_t     = 0.0    # 最后一次 YOLO 结果时间戳
+    res_vel_vx    = 0.0    # 像素/秒
+    res_vel_vy    = 0.0
 
     stop_flag = threading.Event()
 
     # ── YOLO 线程 ─────────────────────────────────────────────────────────────
     def yolo_worker():
         nonlocal res_bbox, res_conf, res_cam_str, res_base_str
-        nonlocal res_detected, res_coasting
+        nonlocal res_detected, res_coasting, res_yolo_fps
+        nonlocal res_vel_t, res_vel_vx, res_vel_vy
 
-        center_ema = None
-        last_bbox  = None
-        miss_count = 0
-        yolo_fps   = _FPS()
+        # ── 线程优先级（Linux）────────────────────────────────────────────────
+        import os
+        try:
+            # 尝试实时调度（需要 sudo 或 CAP_SYS_NICE）
+            param = os.sched_param(os.sched_get_priority_max(os.SCHED_FIFO) - 1)
+            os.sched_setscheduler(0, os.SCHED_FIFO, param)
+            print("[INFO] YOLO thread: SCHED_FIFO real-time priority set.")
+        except (PermissionError, OSError):
+            try:
+                os.nice(-10)  # 普通用户能降 nice 值
+                print("[INFO] YOLO thread: nice=-10 set.")
+            except PermissionError:
+                print("[INFO] YOLO thread: running at default priority.")
+
+        try:
+            # 将 YOLO 线程固定到最后两个核心，避免和相机线程竞争
+            n_cpu = os.cpu_count() or 2
+            os.sched_setaffinity(0, set(range(max(0, n_cpu - 2), n_cpu)))
+            print(f"[INFO] YOLO thread: pinned to CPU {max(0, n_cpu-2)}–{n_cpu-1}.")
+        except (AttributeError, OSError):
+            pass
+
+        center_ema  = None
+        last_bbox   = None
+        miss_count  = 0
+        yolo_fps    = _FPS()
+        prev_cx     = None
+        prev_cy     = None
+        prev_t      = None
 
         while not stop_flag.is_set():
             if not buf_updated.wait(timeout=1.0):
@@ -247,9 +279,12 @@ def main():
                 color = buf_color.copy()
                 depth = buf_depth.copy()   # uint16 numpy array
 
+            t_infer = time.perf_counter()
+
             # YOLO 追踪
             results   = model.track(color, conf=CONF_THRESHOLD,
-                                    persist=True, verbose=False)
+                                    persist=True, verbose=False,
+                                    imgsz=args.imgsz)
             # results   = model(color)
             best_box  = None
             best_conf = 0.0
@@ -265,6 +300,19 @@ def main():
             if best_box is not None:
                 miss_count = 0
                 last_bbox  = tuple(map(int, best_box.xyxy[0]))
+                # 速度估计（像素/秒）
+                x1b, y1b, x2b, y2b = last_bbox
+                cx_now, cy_now = (x1b + x2b) // 2, (y1b + y2b) // 2
+                now = time.perf_counter()
+                if prev_cx is not None and (now - prev_t) > 0:
+                    dt = now - prev_t
+                    vx = (cx_now - prev_cx) / dt
+                    vy = (cy_now - prev_cy) / dt
+                else:
+                    vx, vy = 0.0, 0.0
+                prev_cx, prev_cy, prev_t = cx_now, cy_now, now
+            else:
+                vx, vy = 0.0, 0.0
 
             p_cam_str  = "—"
             p_base_str = "—"
@@ -327,6 +375,10 @@ def main():
                 res_base_str = p_base_str
                 res_detected = detected
                 res_coasting = coasting
+                res_yolo_fps = yolo_fps.fps
+                res_vel_t    = t_infer
+                res_vel_vx   = vx
+                res_vel_vy   = vy
 
             # 终端输出（含 YOLO 实际帧率）
             if detected:
@@ -368,19 +420,29 @@ def main():
             # ── 叠加最新检测结果 ──────────────────────────────────────────────
             if viz:
                 with res_lock:
-                    bbox     = res_bbox
-                    conf     = res_conf
-                    cam_str  = res_cam_str
-                    base_str = res_base_str
-                    detected = res_detected
-                    coasting = res_coasting
+                    bbox      = res_bbox
+                    conf      = res_conf
+                    cam_str   = res_cam_str
+                    base_str  = res_base_str
+                    detected  = res_detected
+                    coasting  = res_coasting
+                    yolo_fps_ = res_yolo_fps
+                    vel_t     = res_vel_t
+                    vx        = res_vel_vx
+                    vy        = res_vel_vy
 
                 if bbox is not None:
                     x1, y1, x2, y2 = bbox
-                    cx, cy  = (x1 + x2) // 2, (y1 + y2) // 2
-                    color   = (0, 255, 0) if detected else (0, 165, 255)
-                    tag     = "Ball" if detected else "Coast"
-                    top     = max(y1 - 30, 30)
+                    # 速度外推：将 bbox 向前平移 Δt × velocity
+                    dt  = time.perf_counter() - vel_t
+                    dx  = int(vx * dt)
+                    dy  = int(vy * dt)
+                    x1, y1, x2, y2 = x1+dx, y1+dy, x2+dx, y2+dy
+                    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+
+                    color = (0, 255, 0) if detected else (0, 165, 255)
+                    tag   = "Ball" if detected else "Coast"
+                    top   = max(y1 - 30, 30)
                     cv2.rectangle(color_image, (x1, y1), (x2, y2), color, 2)
                     cv2.putText(color_image,
                                 f"{tag} cam {cam_str}  {conf:.2f}",
@@ -396,8 +458,8 @@ def main():
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
 
                 cv2.putText(color_image,
-                            f"CAM {cam_fps.fps:.1f}fps",
-                            (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+                            f"CAM {cam_fps.fps:.1f}  YOLO {yolo_fps_:.1f} fps",
+                            (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 200, 255), 2)
                 cv2.imshow("camera_ball", color_image)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
