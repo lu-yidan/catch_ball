@@ -1,154 +1,116 @@
-# Soccer Ball 3D Detection
+# Tennis Ball 3D Detection
 
-使用 **Intel RealSense D435** + **YOLOv8** 实时检测足球，支持输出相机坐标系和机器人 base（pelvis）坐标系下的位置。
-
-## 文件结构
-
-```
-catch_ball/
-├── camera_ball.py           # 相机版主程序（RealSense + YOLO）
-├── test-ball.py             # 雷达版主程序（Livox Mid-360 + ROS2）
-├── transform/
-│   ├── __init__.py
-│   ├── camera_to_base.py    # head_camera_link → pelvis 变换
-│   └── mid360_to_base.py    # mid360_link → pelvis 变换
-├── doc/
-│   ├── alignment.md         # RGB↔Depth 对齐原理
-│   └── core_logic.md        # 核心逻辑说明
-├── requirements.txt
-├── README.md
-└── CLAUDE.md
-```
+使用 **Intel RealSense D455** + **YOLOv8** 实时检测网球，输出球相对相机的三维位置（camera body frame：X前 Y左 Z上）。
 
 ---
 
 ## 环境配置
 
-### 1. 创建 Conda 环境
-
 ```bash
 conda create -n catchball python=3.10 -y
 conda activate catchball
-```
 
-### 2. 安装 pyrealsense2（必须用 conda，不能用 pip）
-
-`pyrealsense2` 通过 conda-forge 安装可避免 Linux 上的 libusb 冲突：
-
-```bash
+# pyrealsense2 必须通过 conda 安装（pip 版在 Linux 上有 libusb 冲突）
 conda install -c conda-forge pyrealsense2 -y
-```
-
-### 3. 安装其余 Python 依赖
-
-```bash
 pip install -r requirements.txt --ignore-installed pyrealsense2
 ```
 
-> `--ignore-installed pyrealsense2` 防止 pip 覆盖刚才 conda 安装的版本。
-
-### 4. 配置 RealSense USB 权限（Linux，只需一次）
+首次 Linux 设置：配置 RealSense USB 权限（只需一次）：
 
 ```bash
 wget https://raw.githubusercontent.com/IntelRealSense/librealsense/master/config/99-realsense-libusb.rules
 sudo cp 99-realsense-libusb.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
-# 重新插拔相机后验证：
-rs-enumerate-devices
 ```
-
-### 5. 可选：ROS2 + LCM（仅 camera_ball.py 需要）
-
-ROS2 和 LCM 是**可选的**。没有安装时，`camera_ball.py` 仍可运行，关节角使用命令行参数或默认值。
-
-- ROS2：按照官方文档安装 Humble/Iron，并确保 `unitree_hg` 消息包已编译
-- LCM：`pip install lcm`，并确保 `lcm_types` 包在 Python 路径中
 
 ---
 
 ## 运行
 
-### main.py（最小版）
-
 ```bash
 conda activate catchball
-python main.py
+python camera_ball.py              # 带 OpenCV 可视化
+python camera_ball.py --no-viz     # 无窗口（headless）
+python camera_ball.py --no-ema     # 关闭 EMA 平滑
+python camera_ball.py --model yolo11m.pt --imgsz 480
 ```
 
 首次运行自动下载 `yolov8n.pt`（约 6MB）。按 `q` 或 `Ctrl+C` 退出。
 
-### camera_ball.py（完整版）
+正常输出示例：
 
-```bash
-conda activate catchball
-
-# 带可视化（默认）
-python camera_ball.py
-
-# 无头模式（无 OpenCV 窗口，适合部署）
-python camera_ball.py --no-viz
-
-# 手动指定关节角（无 ROS2 时调试用，单位 rad）
-python camera_ball.py --no-viz --q-head 0.3 --q-wp 0.1
-
-# 指定 YOLO 模型（见下方模型选择）
-python camera_ball.py --model yolo11m.pt
+```
+[BALL ] cam=(+0.821, +0.012, -0.003)  surf=0.79m ctr=0.82m  YOLO=35.2fps
+[COAST] cam=(+0.820, +0.011, -0.003)  surf=0.79m ctr=0.82m  YOLO=35.2fps
+[     ] no ball  YOLO=35.2fps
 ```
 
-有 ROS2 时，关节角自动从 `/lowstate` 话题读取，无需手动指定。
+| 状态 | 含义 |
+|------|------|
+| `BALL` | 本帧 YOLO 检测到球 |
+| `COAST` | 漏检，沿用上帧位置（最多 10 帧） |
+| `(空)` | 超过 10 帧未检测到 |
 
 ---
 
 ## 模型选择
 
-首次运行指定模型会自动下载。推荐优先试 `yolo11m`。
-
 | 模型 | 参数量 | mAP | 说明 |
-|---|---|---|---|
+|------|--------|-----|------|
 | `yolov8n.pt` | 3M | 37.3 | 默认，最快 |
 | `yolov8s.pt` | 11M | 44.9 | |
-| `yolov8m.pt` | 26M | 50.2 | |
-| `yolo11s.pt` | 9M | 47.0 | 新架构，比 yolov8s 快且准 |
+| `yolo11s.pt` | 9M | 47.0 | 新架构 |
 | `yolo11m.pt` | 20M | 51.5 | **推荐** |
-| `yolo11l.pt` | 25M | 53.4 | |
-| `yolo11x.pt` | 57M | 54.7 | 精度最高，最慢 |
+| `yolo11x.pt` | 57M | 54.7 | 精度最高 |
 
-> 模型文件（`*.pt`）已加入 `.gitignore`，不提交到仓库。
+`*.pt` 文件已加入 `.gitignore`，首次使用自动下载。
 
 ---
 
-## 坐标系说明
-
-**相机坐标系（camera frame）：**
-
-| 轴 | 方向 |
-|---|---|
-| X | 向右 |
-| Y | 向下 |
-| Z | 远离相机（即深度方向） |
-
-**base / pelvis 坐标系：**
-
-通过以下运动学链变换（关节角实时读取）：
+## 坐标系
 
 ```
-pelvis → waist_yaw(Rz) → waist_roll(Rx) → waist_pitch(Ry) → head(Ry) → head_camera(fixed)
+optical frame (RealSense 输出)     camera body frame (输出)
+  Z 朝前                       →     X 朝前
+  X 朝右                       →     Y 朝左
+  Y 朝下                       →     Z 朝上
 ```
 
-固定关节参数来自 URDF（`head_camera_joint`）。
+输出字段 `(x, y, z)` 含义：x = 球在相机前方距离，y = 左方距离，z = 上方距离（均为米）。
+
+---
+
+## 架构说明
+
+双线程设计：
+
+- **主线程**：`pipeline.wait_for_frames()`（释放 GIL）+ 引用交换 + `cv2.imshow`
+- **YOLO 线程**：帧拷贝 → resize → GPU 推理 → Color→Depth 三步像素映射 → 深度采样 → EMA 平滑 → LCM 发布
+
+`camera_ball.py` 主要改进点（相较旧版）：
+
+- **去掉 `align.process()`**：全图深度对齐耗时 ~50ms 且持有 GIL，改为对球心单点做精确 Color→Depth 映射（<0.1ms）
+- **Color→Depth 三步映射**：修正 FOV 差异 + 基线视差，消除旧版最大 ~14cm 横向误差
+- **BALL_RADIUS = 0.033m**：网球半径，深度传感器测前表面，加此偏移得球心
+- **EMA gate 超限时重置**：旧版静默跳过导致球飞远后 EMA 永久冻结
+
+详见 `doc/camera_ball.md`。
+
+---
+
+## LiDAR 版本
+
+`test-ball.py` — Livox Mid-360 + ROS2，需要 `livox_ros_driver2` 和 `unitree_hg`。
 
 ---
 
 ## 常见问题
 
-**`NameError: name 'Node' is not defined`**
-确认 `camera_ball.py` 版本是最新的（已在 import 失败时将 `Node = object` 作为占位）。
-
-**相机无法打开**
-确认 USB 3.0 连接，已配置 udev rules，用 `rs-enumerate-devices` 验证。
+**`RuntimeError: Couldn't resolve requests`**
+相机帧率组合不支持，代码自动尝试 60/60→30/30→15/15 Hz 降级。检查 USB 3.0 连接。
 
 **深度始终为 0**
-足球距离过近（< 0.1m）或过远（> 10m），或表面高光反射。可调整 `DEPTH_MIN` / `DEPTH_MAX`。
+球距离过近（< 0.1m）或过远（> 10m），或高光反射。调整 `DEPTH_MIN/MAX` 或 `DEPTH_SAMPLE_RADIUS`。
 
-**检测不到足球**
-降低 `CONF_THRESHOLD`（如 0.3），或换用 `yolov8s.pt` / `yolov8m.pt`。
+**检测不到网球**
+降低 `CONF_THRESHOLD`（如 0.2），或换用 `yolo11m.pt`。
