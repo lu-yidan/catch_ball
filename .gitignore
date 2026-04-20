@@ -12,6 +12,9 @@ env/
 venv/
 
 # YOLO 模型权重（体积大，按需下载）
+models/*.pt
+models/*.onnx
+models/*.engine
 *.pt
 *.onnx
 *.engine

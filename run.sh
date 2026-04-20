@@ -2,10 +2,10 @@
 # 启动 camera_ball.py（RealSense D455 + YOLO 网球检测）
 #
 # 用法：
-#   bash run.sh                          # 带可视化
-#   bash run.sh --no-viz                 # 无窗口
-#   bash run.sh --model yolo11m.pt       # 切换模型
-#   bash run.sh --no-viz --imgsz 320     # 低延迟模式
+#   bash run.sh                              # 带可视化
+#   bash run.sh --no-viz                     # 无窗口
+#   bash run.sh --model models/yolo11m.pt    # 切换模型
+#   bash run.sh --no-viz --imgsz 320         # 低延迟模式
 #
 # 每次启动前自动杀掉残留进程，确保相机干净释放。
 

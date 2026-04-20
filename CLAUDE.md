@@ -25,14 +25,23 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ## Running
 
-### camera_ball.py (RealSense D455 + YOLO, tennis ball)
-
 ```bash
-python camera_ball.py              # with visualization
-python camera_ball.py --no-viz     # headless, no OpenCV window
-python camera_ball.py --no-ema     # disable EMA position filtering
-python camera_ball.py --model yolo11m.pt --imgsz 480
-python camera_ball.py --width 640 --height 480  # camera resolution
+bash run.sh                              # YOLO detector, with visualization
+bash run.sh --no-viz                     # YOLO detector, headless
+bash run.sh --model models/yolo11m.pt    # switch YOLO model
+
+bash run_color.sh                        # HSV colour detector, with visualization
+bash run_color.sh --no-viz               # HSV detector, headless
+bash run_color.sh --show-mask            # show binary HSV mask (for HSV tuning)
+bash run_color.sh --h-low 30 --h-high 75 # custom HSV hue range
+```
+
+Both scripts kill stale `camera_ball` processes before starting.
+
+Direct invocation (without the launcher scripts):
+```bash
+python camera_ball.py --no-viz --model models/yolo11m.pt --imgsz 480
+python camera_ball_color.py --no-viz --no-ema
 ```
 
 ### test-ball.py (Livox Mid-360 + ROS2)
@@ -45,10 +54,13 @@ First run auto-downloads `yolov8n.pt` (~6MB). Press `q` or `Ctrl+C` to quit.
 
 ## Architecture
 
-Two main scripts sharing the `transform/` package:
+Three main detection scripts sharing the `transform/` package:
 
-- **`camera_ball.py`** — RealSense D435 + YOLOv8; optional ROS2 joint angles + LCM publishing
+- **`camera_ball.py`** — RealSense D455 + YOLOv8; optional LCM publishing
+- **`camera_ball_color.py`** — RealSense D455 + HSV colour segmentation; visual depth (`fx*R/r_px`) fused with sensor depth; no GPU required
 - **`test-ball.py`** — Livox Mid-360 LiDAR; requires ROS2
+
+Models live in `models/` (gitignored; auto-downloaded on first use).
 
 ### Threading model (camera_ball.py)
 

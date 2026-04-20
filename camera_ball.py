@@ -64,7 +64,7 @@ def main():
     parser = argparse.ArgumentParser(description="RealSense D455 tennis ball → camera body frame")
     parser.add_argument("--no-viz",  action="store_true", help="disable OpenCV window")
     parser.add_argument("--no-ema",  action="store_true", help="disable EMA smoothing")
-    parser.add_argument("--model",   default="yolov8n.pt", help="YOLO model path")
+    parser.add_argument("--model",   default="models/yolov8n.pt", help="YOLO model path")
     parser.add_argument("--imgsz",   type=int, default=480, help="YOLO input size")
     parser.add_argument("--width",   type=int, default=640, help="camera capture width")
     parser.add_argument("--height",  type=int, default=480, help="camera capture height")
