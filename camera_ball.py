@@ -127,7 +127,7 @@ def main():
                     if len(devs) == 0:
                         raise RuntimeError("No RealSense device found.")
                     devs[0].hardware_reset()
-                    time.sleep(3)
+                    time.sleep(5)
         raise RuntimeError(f"RealSense failed. Tried {_FPS_TRIES}. Last: {last_err!r}")
 
     profile = _start_pipeline()
