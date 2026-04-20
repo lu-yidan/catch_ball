@@ -4,6 +4,16 @@ camera_ball_color.py
 RealSense D455 + HSV color segmentation for tennis ball detection.
 Outputs ball position in camera body frame (X-forward, Y-left, Z-up).
 
+Detection range:
+  Max range = fx * BALL_RADIUS / MIN_RADIUS_PX
+  Default (1280×720, MIN_RADIUS_PX=3): 616 * 0.033 / 3 ≈ 6.8 m
+  Low-res  ( 640×480, MIN_RADIUS_PX=3): 388 * 0.033 / 3 ≈ 4.3 m
+
+  D455 supported resolutions (color + depth must match):
+    1280×720  @ 30 fps  ← default, longer range
+     848×480  @ 60 fps  ← faster, medium range (~5.6 m)
+     640×480  @ 60/90 fps ← fastest, short range (~4.3 m)
+
 Depth is estimated two ways and fused:
   1. Visual (apparent size): depth = fx * BALL_RADIUS / r_pixels
      - Gives ball CENTRE depth directly (no +BALL_RADIUS offset needed)
@@ -19,10 +29,11 @@ Fusion rule:
   - Neither     → coast / no measurement
 
 Usage:
-    python camera_ball_color.py                  # with OpenCV window
-    python camera_ball_color.py --no-viz         # headless
-    python camera_ball_color.py --show-mask      # show HSV binary mask (for tuning)
-    python camera_ball_color.py --h-low 30 --h-high 75  # tune HSV hue range
+    python camera_ball_color.py                           # 1280×720, with window
+    python camera_ball_color.py --no-viz                  # headless
+    python camera_ball_color.py --show-mask               # show HSV mask (for tuning)
+    python camera_ball_color.py --width 848 --height 480  # 60 fps mode
+    python camera_ball_color.py --h-low 30 --h-high 75    # tune HSV hue range
 
 LCM publishing (if lcm + lcm_types available):
     channel: camera_ball_lcmt, coords in camera body frame
@@ -53,9 +64,12 @@ HSV_V_MIN  = 80
 
 # ── Detection params ──────────────────────────────────────────────────────────
 BALL_RADIUS      = 0.033   # m — tennis ball physical radius
-MIN_RADIUS_PX    = 5       # px — ignore blobs smaller than this
+# Detection range limit: D_max = fx * BALL_RADIUS / MIN_RADIUS_PX
+# At 1280×720 (fx≈616):  3px → ~6.8m | 5px → ~4.1m
+# At  640×480 (fx≈388):  3px → ~4.3m | 5px → ~2.6m
+MIN_RADIUS_PX    = 3       # px — lower = longer range, more false positives
 MAX_RADIUS_PX    = 200     # px — ignore blobs larger than this
-MIN_CIRCULARITY  = 0.65    # 0–1, 1=perfect circle; filters non-circular blobs
+MIN_CIRCULARITY  = 0.60    # 0–1, slightly relaxed for tiny far-away blobs
 DEPTH_MIN        = 0.15    # m
 DEPTH_MAX        = 8.0     # m
 DEPTH_SAMPLE_RADIUS = 5    # px — depth patch radius around detected centre
@@ -94,8 +108,10 @@ def detect_tennis_ball(frame_bgr, hsv_low, hsv_high):
     hsv  = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(hsv, hsv_low, hsv_high)
 
-    # Morphological cleanup: close small holes, remove thin noise
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # Morphological cleanup: close small holes, remove thin noise.
+    # Use 3×3 kernel — a 5×5 kernel erases blobs smaller than ~10px diameter
+    # (the ball at 4–6m is only 6–10px wide at 1280×720).
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
     mask   = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
     mask   = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel, iterations=1)
 
@@ -137,8 +153,10 @@ def main():
     parser.add_argument("--no-viz",    action="store_true", help="disable OpenCV window")
     parser.add_argument("--no-ema",    action="store_true", help="disable EMA smoothing")
     parser.add_argument("--show-mask", action="store_true", help="show HSV binary mask window")
-    parser.add_argument("--width",     type=int, default=640)
-    parser.add_argument("--height",    type=int, default=480)
+    parser.add_argument("--width",   type=int, default=1280,
+                        help="capture width (default 1280; use 848 for 60fps, 640 for 90fps)")
+    parser.add_argument("--height", type=int, default=720,
+                        help="capture height (default 720; use 480 with width 848 or 640)")
     parser.add_argument("--h-low",     type=int, default=HSV_H_LOW,  help="HSV hue lower bound")
     parser.add_argument("--h-high",    type=int, default=HSV_H_HIGH, help="HSV hue upper bound")
     parser.add_argument("--s-min",     type=int, default=HSV_S_MIN,  help="HSV saturation min")

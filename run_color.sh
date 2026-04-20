@@ -2,10 +2,12 @@
 # 启动 camera_ball_color.py（RealSense D455 + HSV 网球检测）
 #
 # 用法：
-#   bash run_color.sh                        # 带可视化
-#   bash run_color.sh --no-viz               # 无窗口
-#   bash run_color.sh --show-mask            # 显示 HSV 二值掩码（调参用）
-#   bash run_color.sh --h-low 30 --h-high 75 # 手动指定色相范围
+#   bash run_color.sh                              # 1280×720 @30fps，带可视化（默认）
+#   bash run_color.sh --no-viz                     # 无窗口
+#   bash run_color.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
+#   bash run_color.sh --width 848 --height 480     # 848×480 @60fps（帧率优先）
+#   bash run_color.sh --width 640 --height 480     # 640×480 @90fps（最快）
+#   bash run_color.sh --h-low 30 --h-high 75       # 手动指定色相范围
 #
 # 每次启动前自动杀掉残留进程，确保相机干净释放。
 

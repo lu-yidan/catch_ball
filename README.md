@@ -25,35 +25,64 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ---
 
-## 运行
+## 两种检测方案
 
-```bash
-conda activate catchball
-python camera_ball.py              # 带 OpenCV 可视化
-python camera_ball.py --no-viz     # 无窗口（headless）
-python camera_ball.py --no-ema     # 关闭 EMA 平滑
-python camera_ball.py --model yolo11m.pt --imgsz 480
-```
-
-首次运行自动下载 `yolov8n.pt`（约 6MB）。按 `q` 或 `Ctrl+C` 退出。
-
-正常输出示例：
-
-```
-[BALL ] cam=(+0.821, +0.012, -0.003)  surf=0.79m ctr=0.82m  YOLO=35.2fps
-[COAST] cam=(+0.820, +0.011, -0.003)  surf=0.79m ctr=0.82m  YOLO=35.2fps
-[     ] no ball  YOLO=35.2fps
-```
-
-| 状态 | 含义 |
-|------|------|
-| `BALL` | 本帧 YOLO 检测到球 |
-| `COAST` | 漏检，沿用上帧位置（最多 10 帧） |
-| `(空)` | 超过 10 帧未检测到 |
+| | YOLO 方案 (`camera_ball.py`) | HSV 方案 (`camera_ball_color.py`) |
+|--|--|--|
+| 检测原理 | 神经网络目标检测 | HSV 色块分割 + 圆形拟合 |
+| 速度 | ~60 fps（GPU） | >200 fps（CPU） |
+| 运动模糊 | 差（bbox 变形） | 好（颜色比边缘更耐模糊） |
+| 光照依赖 | 低 | 高（需调 HSV 阈值） |
+| 遮挡处理 | 好 | 差（遮挡会低估圆半径） |
+| 深度来源 | 深度传感器（front surface + R） | 视觉测距 + 传感器融合 |
+| 适用场景 | 通用 | 高速球、颜色稳定环境 |
 
 ---
 
-## 模型选择
+## 运行
+
+### YOLO 方案
+
+```bash
+bash run.sh                              # 带可视化
+bash run.sh --no-viz                     # 无窗口
+bash run.sh --model models/yolo11m.pt    # 精度更高的模型
+```
+
+首次运行自动下载 `models/yolov8n.pt`（约 6MB）。
+
+### HSV 方案
+
+```bash
+bash run_color.sh                              # 1280×720 @30fps（默认，最远 ~6.8m）
+bash run_color.sh --width 848 --height 480     # 848×480  @60fps（最远 ~5.6m）
+bash run_color.sh --width 640 --height 480     # 640×480  @90fps（最远 ~4.3m）
+bash run_color.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
+bash run_color.sh --h-low 30 --h-high 75       # 手动指定 HSV 色相范围
+```
+
+按 `q` 或 `Ctrl+C` 退出。
+
+### HSV 检测距离上限
+
+检测距离由几何约束决定：
+
+```
+D_max = fx × BALL_RADIUS / MIN_RADIUS_PX
+```
+
+| 分辨率 | fx | MIN_RADIUS_PX=3 | FPS |
+|--------|-----|-----------------|-----|
+| 1280×720 | ~616 | **6.8 m** | 30 |
+| 848×480  | ~424 | **4.7 m** | 60 |
+| 640×480  | ~388 | **4.3 m** | 90 |
+
+> 超出范围后球的像素半径小于 3px，圆形拟合不可靠。
+> 调小 `MIN_RADIUS_PX`（如 2）可进一步延伸，但误检率会上升。
+
+---
+
+## YOLO 模型选择
 
 | 模型 | 参数量 | mAP | 说明 |
 |------|--------|-----|------|
@@ -63,7 +92,7 @@ python camera_ball.py --model yolo11m.pt --imgsz 480
 | `yolo11m.pt` | 20M | 51.5 | **推荐** |
 | `yolo11x.pt` | 57M | 54.7 | 精度最高 |
 
-`*.pt` 文件已加入 `.gitignore`，首次使用自动下载。
+模型文件存放于 `models/`（gitignore，首次使用自动下载）。
 
 ---
 
