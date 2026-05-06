@@ -258,6 +258,7 @@ def main():
     _FPS_TRIES = [(60, 60), (30, 30), (15, 15)]
 
     def _start_pipeline():
+        nonlocal pipeline
         last_err = None
         for c_fps, d_fps in _FPS_TRIES:
             rs_cfg = rs.config()
@@ -285,7 +286,10 @@ def main():
                     if len(devs) == 0:
                         raise RuntimeError("No RealSense device found.")
                     devs[0].hardware_reset()
-                    time.sleep(5)
+                    time.sleep(8)
+                    # Re-create pipeline: after reset the device re-enumerates and
+                    # gets new /dev/videoX nodes; the old object holds stale handles.
+                    pipeline = rs.pipeline()
         raise RuntimeError(f"RealSense failed. Tried {_FPS_TRIES}. Last: {last_err!r}")
 
     profile = _start_pipeline()
