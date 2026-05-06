@@ -78,6 +78,71 @@ EMA_ALPHA        = 0.6
 EMA_GATE         = 0.6     # m
 COAST_FRAMES     = 10
 
+# ── Trajectory prediction ──────────────────────────────────────────────────────
+TRAJ_WINDOW_SEC  = 1.0   # s of history to keep
+TRAJ_MIN_PTS     = 6     # minimum points before fitting
+TRAJ_PREDICT_SEC = 0.6   # s ahead to predict
+
+
+class TrajectoryPredictor:
+    """
+    Fits a ballistic model to a rolling window of 3D positions and predicts
+    future positions.  All coordinates are in camera body frame
+    (X-forward, Y-left, Z-up).
+
+    Model: x,y linear in time; z quadratic (free-fit, adapts to noise).
+    """
+
+    def __init__(self):
+        self._t: list = []
+        self._p: list = []
+
+    def reset(self):
+        self._t.clear()
+        self._p.clear()
+
+    def add(self, t: float, p: "np.ndarray"):
+        self._t.append(t)
+        self._p.append(p.copy())
+        cutoff = t - TRAJ_WINDOW_SEC
+        while self._t and self._t[0] < cutoff:
+            self._t.pop(0)
+            self._p.pop(0)
+
+    def predict(self):
+        """Return (past_pts, future_pts) as (N,3) arrays, or (None, None)."""
+        n = len(self._t)
+        if n < TRAJ_MIN_PTS:
+            return None, None
+        t0  = self._t[0]
+        ts  = np.array(self._t) - t0
+        pts = np.array(self._p)
+        A1  = np.column_stack([np.ones(n), ts])
+        A2  = np.column_stack([np.ones(n), ts, ts ** 2])
+        cx, *_ = np.linalg.lstsq(A1, pts[:, 0], rcond=None)
+        cy, *_ = np.linalg.lstsq(A1, pts[:, 1], rcond=None)
+        cz, *_ = np.linalg.lstsq(A2, pts[:, 2], rcond=None)
+        tf = np.linspace(ts[-1], ts[-1] + TRAJ_PREDICT_SEC, 20)
+        future = np.column_stack([
+            cx[0] + cx[1] * tf,
+            cy[0] + cy[1] * tf,
+            cz[0] + cz[1] * tf + cz[2] * tf ** 2,
+        ])
+        return pts, future
+
+
+def _body_to_pixel(p_body, intrin):
+    """Camera body frame (X-fwd, Y-left, Z-up) → image pixel, or None."""
+    x, y, z = float(p_body[0]), float(p_body[1]), float(p_body[2])
+    opt_z = x                   # body X (forward) → optical Z
+    if opt_z <= 0.01:
+        return None
+    u = intrin.fx * (-y) / opt_z + intrin.ppx   # body Y (left) → optical -X
+    v = intrin.fy * (-z) / opt_z + intrin.ppy   # body Z (up)   → optical -Y
+    if not (0 <= u < intrin.width and 0 <= v < intrin.height):
+        return None
+    return int(u + 0.5), int(v + 0.5)
+
 
 class _FPS:
     def __init__(self, window=30):
@@ -161,6 +226,7 @@ def main():
     parser.add_argument("--h-high",    type=int, default=HSV_H_HIGH, help="HSV hue upper bound")
     parser.add_argument("--s-min",     type=int, default=HSV_S_MIN,  help="HSV saturation min")
     parser.add_argument("--v-min",     type=int, default=HSV_V_MIN,  help="HSV value min")
+    parser.add_argument("--no-traj",   action="store_true",          help="disable trajectory prediction overlay")
     args = parser.parse_args()
 
     viz      = not args.no_viz
@@ -256,8 +322,11 @@ def main():
 
         center_ema = None
         last_cx = last_cy = last_r = None
-        miss_count = 0
-        det_fps    = _FPS()
+        miss_count  = 0
+        det_fps     = _FPS()
+        traj        = TrajectoryPredictor()
+        past_pts    = None
+        future_pts  = None
 
         while not stop_flag.is_set():
             if not buf_updated.wait(timeout=1.0):
@@ -284,6 +353,9 @@ def main():
                 last_cx, last_cy, last_r = cx, cy, r_px
             else:
                 miss_count += 1
+                if miss_count > COAST_FRAMES and not args.no_traj:
+                    traj.reset()
+                    past_pts = future_pts = None
 
             p_cam_str    = "—"
             depth_vis    = 0.0
@@ -366,6 +438,9 @@ def main():
                             print(f"\n[WARN] EMA gate {gate_dist:.2f}m > {EMA_GATE}m, resetting",
                                   flush=True)
                             center_ema = p_cam_arr.copy()
+                            if not args.no_traj:
+                                traj.reset()
+                                past_pts = future_pts = None
 
                     x, y, z   = float(center_ema[0]), float(center_ema[1]), float(center_ema[2])
                     p_cam_str = f"({x:+.3f}, {y:+.3f}, {z:+.3f})"
@@ -375,6 +450,10 @@ def main():
                         lcm_msg.offset_time = int(time.time() * 1e6)
                         lcm_msg.x, lcm_msg.y, lcm_msg.z = x, y, z
                         lc.publish("camera_ball_lcmt", lcm_msg.encode())
+
+                    if not args.no_traj:
+                        traj.add(time.perf_counter(), center_ema)
+                        past_pts, future_pts = traj.predict()
 
             det_fps.tick()
 
@@ -418,6 +497,28 @@ def main():
                 else:
                     cv2.putText(vis, "No ball", (20, 60),
                                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2)
+
+                # ── Trajectory overlay ────────────────────────────────────────
+                if not args.no_traj and past_pts is not None:
+                    # Past trail: cyan dots + line
+                    prev = None
+                    for pt in past_pts:
+                        px = _body_to_pixel(pt, color_intrin)
+                        if px is not None:
+                            cv2.circle(vis, px, 3, (255, 200, 0), -1)
+                            if prev is not None:
+                                cv2.line(vis, prev, px, (200, 160, 0), 1)
+                            prev = px
+                    # Predicted arc: red dots + line
+                    if future_pts is not None:
+                        prev = None
+                        for pt in future_pts:
+                            px = _body_to_pixel(pt, color_intrin)
+                            if px is not None:
+                                cv2.circle(vis, px, 3, (0, 60, 255), -1)
+                                if prev is not None:
+                                    cv2.line(vis, prev, px, (0, 60, 255), 1)
+                                prev = px
 
                 cv2.putText(vis, f"HSV det {det_fps.fps:.1f} fps",
                             (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)

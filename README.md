@@ -59,6 +59,7 @@ bash run_color.sh --width 848 --height 480     # 848×480  @60fps（最远 ~5.6m
 bash run_color.sh --width 640 --height 480     # 640×480  @90fps（最远 ~4.3m）
 bash run_color.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
 bash run_color.sh --h-low 30 --h-high 75       # 手动指定 HSV 色相范围
+bash run_color.sh --no-traj                    # 关闭轨迹预测叠加层
 ```
 
 按 `q` 或 `Ctrl+C` 退出。
@@ -79,6 +80,43 @@ D_max = fx × BALL_RADIUS / MIN_RADIUS_PX
 
 > 超出范围后球的像素半径小于 3px，圆形拟合不可靠。
 > 调小 `MIN_RADIUS_PX`（如 2）可进一步延伸，但误检率会上升。
+
+---
+
+## 轨迹预测（HSV 方案）
+
+`camera_ball_color.py` 内置弹道轨迹预测，默认开启，无需额外配置。
+
+### 原理
+
+在 camera body frame 中对滑动时间窗口内的 3D 检测点做最小二乘拟合：
+
+```
+x(t) = ax + bx·t          (前向，线性)
+y(t) = ay + by·t          (侧向，线性)
+z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `TRAJ_WINDOW_SEC` | 1.0 s | 历史点保留时长 |
+| `TRAJ_MIN_PTS` | 6 | 开始预测所需最少点数 |
+| `TRAJ_PREDICT_SEC` | 0.6 s | 向前预测时长 |
+
+### 可视化叠加层
+
+| 颜色 | 含义 |
+|------|------|
+| 蓝黄色点+线 | 过去 1 s 历史轨迹（反投影到图像） |
+| 红色点+线 | 向前 0.6 s 预测弧线 |
+
+以下情况自动重置轨迹缓冲区：
+- EMA gate 超限（球位置跳变 > 0.6 m）
+- 球消失超过 `COAST_FRAMES`（10 帧）
+
+### 扩展到移动相机
+
+当相机安装在机器人头部时，在调用 `traj.add()` 之前用 `transform_point_camera_to_base()` 将 `center_ema` 转换到 pelvis 坐标系，轨迹拟合和预测逻辑不需要改动。关节角通过 LCM 实时读取。
 
 ---
 
