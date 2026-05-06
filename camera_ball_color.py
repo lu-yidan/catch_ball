@@ -227,11 +227,19 @@ def main():
     parser.add_argument("--s-min",     type=int, default=HSV_S_MIN,  help="HSV saturation min")
     parser.add_argument("--v-min",     type=int, default=HSV_V_MIN,  help="HSV value min")
     parser.add_argument("--no-traj",   action="store_true",          help="disable trajectory prediction overlay")
+    parser.add_argument("--record", metavar="FILE", nargs="?", const="",
+                        help="record annotated video; omit FILE for auto-named ball_YYYYMMDD_HHMMSS.mp4")
     args = parser.parse_args()
 
     viz      = not args.no_viz
     hsv_low  = np.array([args.h_low,  args.s_min, args.v_min], dtype=np.uint8)
     hsv_high = np.array([args.h_high, 255,        255       ], dtype=np.uint8)
+
+    rec_path = None
+    if args.record is not None:
+        rec_path = args.record if args.record else time.strftime("ball_%Y%m%d_%H%M%S.mp4")
+        print(f"[INFO] Recording to: {rec_path}")
+    video_writer = [None]   # list so detection thread can assign without nonlocal
 
     print(f"[INFO] HSV range: H=[{args.h_low},{args.h_high}]  "
           f"S>={args.s_min}  V>={args.v_min}")
@@ -474,7 +482,7 @@ def main():
                   end="", flush=True)
 
             # ── Annotated display frame ───────────────────────────────────────
-            if viz or args.show_mask:
+            if viz or args.show_mask or rec_path is not None:
                 vis = color.copy()
 
                 if last_cx is not None and miss_count <= COAST_FRAMES:
@@ -523,13 +531,22 @@ def main():
                 cv2.putText(vis, f"HSV det {det_fps.fps:.1f} fps",
                             (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
-                with disp_lock:
-                    if args.show_mask:
-                        # Side-by-side: colour frame + HSV mask
-                        mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-                        disp_frame[0] = np.hstack([vis, mask_bgr])
-                    else:
-                        disp_frame[0] = vis
+                if args.show_mask:
+                    mask_bgr = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+                    out_frame = np.hstack([vis, mask_bgr])
+                else:
+                    out_frame = vis
+
+                if rec_path is not None:
+                    if video_writer[0] is None:
+                        h, w = out_frame.shape[:2]
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        video_writer[0] = cv2.VideoWriter(rec_path, fourcc, 30.0, (w, h))
+                    video_writer[0].write(out_frame)
+
+                if viz or args.show_mask:
+                    with disp_lock:
+                        disp_frame[0] = out_frame
 
     det_thread = threading.Thread(target=detection_worker, daemon=True)
     det_thread.start()
@@ -558,6 +575,9 @@ def main():
         stop_flag.set()
         det_thread.join(timeout=2)
         pipeline.stop()
+        if video_writer[0] is not None:
+            video_writer[0].release()
+            print(f"\n[INFO] Video saved: {rec_path}")
         if viz or args.show_mask:
             cv2.destroyAllWindows()
         print("\n[INFO] Done.")

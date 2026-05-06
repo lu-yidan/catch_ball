@@ -60,6 +60,9 @@ bash run_color.sh --width 640 --height 480     # 640×480  @90fps（最远 ~4.3m
 bash run_color.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
 bash run_color.sh --h-low 30 --h-high 75       # 手动指定 HSV 色相范围
 bash run_color.sh --no-traj                    # 关闭轨迹预测叠加层
+bash run_color.sh --record                     # 录制带标注视频（自动命名）
+bash run_color.sh --record out.mp4             # 录制到指定文件
+bash run_color.sh --no-viz --record out.mp4    # 无窗口录制（后台模式）
 ```
 
 按 `q` 或 `Ctrl+C` 退出。

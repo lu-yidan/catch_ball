@@ -9,6 +9,8 @@
 #   bash run_color.sh --width 640 --height 480     # 640×480 @90fps（最快）
 #   bash run_color.sh --h-low 30 --h-high 75       # 手动指定色相范围
 #   bash run_color.sh --no-traj                    # 关闭轨迹预测叠加层
+#   bash run_color.sh --record                     # 录制（自动命名 ball_YYYYMMDD_HHMMSS.mp4）
+#   bash run_color.sh --record out.mp4             # 录制到指定文件
 #
 # 每次启动前自动杀掉残留进程，确保相机干净释放。
 
