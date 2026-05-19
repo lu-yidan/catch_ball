@@ -67,6 +67,38 @@ bash run_color.sh --no-viz --record out.mp4    # 无窗口录制（后台模式�
 
 按 `q` 或 `Ctrl+C` 退出。
 
+### RGB-D 录制
+
+快速录制可播放视频：
+
+```bash
+bash tools/recording/run_record.sh                         # 录制 RGB + depth，带预览
+bash tools/recording/run_record.sh --duration 10           # 录制 10 秒
+bash tools/recording/run_record.sh --width 848 --height 480 --fps 60
+bash tools/recording/run_record.sh --no-preview            # 无窗口录制
+bash tools/recording/run_record.sh --no-depth-png          # 只保存可播放视频
+```
+
+默认输出到 `recordings/rgbd_YYYYMMDD_HHMMSS/`：
+
+- `color.mp4`：RGB 视频
+- `depth_vis.mp4`：伪彩色 depth 预览视频
+- `depth/*.png`：逐帧 16-bit 原始 depth（单位换算见 `metadata.json` 的 `depth_scale_m_per_unit`）
+- `timestamps.csv` / `metadata.json`：时间戳、内参、录制参数
+
+默认会将 depth 对齐到 color 像素坐标；如需保存原始 depth 坐标，可加 `--no-align`。
+
+严格 1280×720 @30fps 录制推荐先保存 RealSense 原生 `.bag`，再离线导出视频和 depth PNG：
+
+```bash
+bash tools/recording/run_record_bag.sh --duration 10                 # 实时严格录制 .bag
+bash tools/recording/run_record_bag.sh --duration 10 --preview       # 可选轻量 RGB 预览
+bash tools/recording/run_export_bag.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag
+bash tools/recording/run_export_bag.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag --no-depth-png
+```
+
+`.bag` 录制阶段只写 RealSense 原始流，避免实时 MP4 编码、depth 伪彩色、PNG 压缩和 depth 对齐拖慢采集。离线导出目录默认与 `.bag` 同名，例如 `recordings/rgbd_bag_YYYYMMDD_HHMMSS/`。
+
 ### HSV 检测距离上限
 
 检测距离由几何约束决定：
@@ -134,6 +166,23 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 | `yolo11x.pt` | 57M | 54.7 | 精度最高 |
 
 模型文件存放于 `models/`（gitignore，首次使用自动下载）。
+
+---
+
+## 文件结构
+
+```text
+.
+├── camera_ball.py          # YOLO 检测
+├── camera_ball_color.py    # HSV 检测 + 轨迹预测
+├── run.sh                  # YOLO 启动脚本
+├── run_color.sh            # HSV 启动脚本
+├── models/                 # YOLO 权重文件（gitignore）
+├── recordings/             # RGB-D 录制输出（gitignore）
+├── tools/recording/        # RGB-D 录制和 .bag 导出脚本
+├── transform/              # 坐标变换
+└── doc/                    # 说明文档
+```
 
 ---
 

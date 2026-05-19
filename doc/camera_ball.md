@@ -278,7 +278,7 @@ _FPS_TRIES = [(60, 60), (30, 30), (15, 15)]
 | `EMA_ALPHA` | 0.6 | 平滑系数（越大跟踪越快） |
 | `EMA_GATE` | 0.6 m | 超出则重置 EMA |
 | `COAST_FRAMES` | 10 帧 | 漏检保持帧数 |
-| `--model` | yolov8n.pt | YOLO 模型路径 |
+| `--model` | models/yolov8n.pt | YOLO 模型路径 |
 | `--imgsz` | 480 | YOLO 推理输入边长 |
 | `--width/height` | 640/480 | 相机采集分辨率 |
 | `--no-viz` | False | 关闭 OpenCV 窗口 |

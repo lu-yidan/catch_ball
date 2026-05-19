@@ -22,6 +22,8 @@ models/*.engine
 # RealSense / 录制文件
 *.bag
 *.rosbag
+recordings/*
+!recordings/.gitkeep
 
 # 编辑器
 .vscode/

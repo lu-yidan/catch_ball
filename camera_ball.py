@@ -8,7 +8,7 @@ Usage:
     python camera_ball.py              # with OpenCV visualization
     python camera_ball.py --no-viz     # headless
     python camera_ball.py --no-ema     # disable EMA smoothing
-    python camera_ball.py --model yolo11m.pt --imgsz 480
+    python camera_ball.py --model models/yolo11m.pt --imgsz 480
 
 LCM publishing (if lcm + lcm_types available):
     channel: camera_ball_lcmt, coords in camera body frame
