@@ -65,6 +65,32 @@ bash run_color.sh --record out.mp4             # 录制到指定文件
 bash run_color.sh --no-viz --record out.mp4    # 无窗口录制（后台模式）
 ```
 
+### Web HSV 调参
+
+```bash
+bash tools/hsv_tuner/run_tune_hsv_web.sh
+bash tools/hsv_tuner/run_tune_hsv_web.sh --port 5001
+bash tools/hsv_tuner/run_tune_hsv_web.sh --video recordings/rgbd_YYYYMMDD_HHMMSS/color.mp4
+```
+
+启动后在浏览器打开 `http://localhost:5000`。工具提供 HSV、MOG2 运动滤波、最小半径和圆形度滑条，可用实时 D455 画面或录制视频调参。
+
+### 网球 + 蓝色末端双目标 HSV
+
+```bash
+bash run_dual_hsv.sh                    # 同时识别网球和蓝色末端圆片
+bash run_dual_hsv.sh --no-viz           # 无窗口，只输出坐标
+bash run_dual_hsv.sh --show-mask        # 显示原图、网球 mask、蓝色 mask
+```
+
+默认蓝色 HSV 来自样例图：`H=[94,104] S>=80 V>=35`。如果蓝色暗部缺失，可以放宽：
+
+```bash
+bash run_dual_hsv.sh --show-mask --blue-h-low 86 --blue-h-high 108 --blue-s-min 35 --blue-v-min 25
+```
+
+输出坐标均为 camera body frame `(x, y, z)`。网球位置使用 HSV 圆检测 + 视觉/深度融合；蓝色末端圆片使用 HSV 找中心，再用 RealSense depth patch 中值反投影。蓝色圆片默认直径 `0.026m`。
+
 按 `q` 或 `Ctrl+C` 退出。
 
 ### RGB-D 录制
@@ -175,10 +201,13 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 .
 ├── camera_ball.py          # YOLO 检测
 ├── camera_ball_color.py    # HSV 检测 + 轨迹预测
+├── camera_ball_dual_hsv.py # HSV 同时检测网球和蓝色末端
 ├── run.sh                  # YOLO 启动脚本
 ├── run_color.sh            # HSV 启动脚本
+├── run_dual_hsv.sh         # 双目标 HSV 启动脚本
 ├── models/                 # YOLO 权重文件（gitignore）
 ├── recordings/             # RGB-D 录制输出（gitignore）
+├── tools/hsv_tuner/        # Web HSV/MOG2 调参工具
 ├── tools/recording/        # RGB-D 录制和 .bag 导出脚本
 ├── transform/              # 坐标变换
 └── doc/                    # 说明文档

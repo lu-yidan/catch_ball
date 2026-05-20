@@ -16,7 +16,7 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON="/home/lyd/miniconda3/envs/catchball/bin/python"
+PYTHON="/home/ydlu/miniconda3/envs/catchball/bin/python"
 
 # ── 1. 杀掉所有残留的 camera_ball 进程 ───────────────────────────────────────
 echo "[run_color.sh] Killing stale camera_ball processes..."
