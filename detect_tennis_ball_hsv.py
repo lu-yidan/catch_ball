@@ -1,5 +1,5 @@
 """
-camera_ball_color.py
+detect_tennis_ball_hsv.py
 
 RealSense D455 + HSV color segmentation for tennis ball detection.
 Outputs ball position in camera body frame (X-forward, Y-left, Z-up).
@@ -29,11 +29,11 @@ Fusion rule:
   - Neither     → coast / no measurement
 
 Usage:
-    python camera_ball_color.py                           # 1280×720, with window
-    python camera_ball_color.py --no-viz                  # headless
-    python camera_ball_color.py --show-mask               # show HSV mask (for tuning)
-    python camera_ball_color.py --width 848 --height 480  # 60 fps mode
-    python camera_ball_color.py --h-low 30 --h-high 75    # tune HSV hue range
+    python detect_tennis_ball_hsv.py                           # 1280×720, with window
+    python detect_tennis_ball_hsv.py --no-viz                  # headless
+    python detect_tennis_ball_hsv.py --show-mask               # show HSV mask (for tuning)
+    python detect_tennis_ball_hsv.py --width 848 --height 480  # 60 fps mode
+    python detect_tennis_ball_hsv.py --h-low 30 --h-high 75    # tune HSV hue range
 
 LCM publishing (if lcm + lcm_types available):
     channel: camera_ball_lcmt, coords in camera body frame
@@ -556,7 +556,7 @@ def main():
     det_thread.start()
 
     # ── Main thread: camera capture + display ─────────────────────────────────
-    win_title = "camera_ball_color (q=quit)"
+    win_title = "detect_tennis_ball_hsv (q=quit)"
     print(f"[INFO] Running. Press {'q' if viz else 'Ctrl+C'} to quit.")
     try:
         while True:

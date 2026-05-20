@@ -1,5 +1,5 @@
 """
-record_rgbd.py
+record_rgbd_to_videos.py
 
 Record synchronized RealSense RGB and depth streams.
 
@@ -11,10 +11,10 @@ Outputs per session:
   metadata.json   - camera intrinsics, depth scale, and recording settings
 
 Usage:
-    python record_rgbd.py
-    python record_rgbd.py --duration 10
-    python record_rgbd.py --width 848 --height 480 --fps 60
-    python record_rgbd.py --no-preview --no-depth-png
+    python record_rgbd_to_videos.py
+    python record_rgbd_to_videos.py --duration 10
+    python record_rgbd_to_videos.py --width 848 --height 480 --fps 60
+    python record_rgbd_to_videos.py --no-preview --no-depth-png
 """
 
 import argparse
@@ -166,7 +166,7 @@ def main():
                     cv2.putText(preview, f"frame={current_idx}  t={elapsed:.1f}s",
                                 (20, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
                                 (255, 255, 255), 2)
-                    cv2.imshow("record_rgbd: color | depth (q=quit)", preview)
+                    cv2.imshow("record_rgbd_to_videos: color | depth (q=quit)", preview)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 

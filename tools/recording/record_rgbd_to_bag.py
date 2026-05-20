@@ -1,5 +1,5 @@
 """
-record_rgbd_bag.py
+record_rgbd_to_bag.py
 
 Record RealSense RGB-D streams to a native .bag file.
 
@@ -8,9 +8,9 @@ recording path stores the RealSense streams directly instead of encoding MP4 or
 writing depth PNGs in the capture loop.
 
 Usage:
-    python record_rgbd_bag.py
-    python record_rgbd_bag.py --duration 10
-    python record_rgbd_bag.py --width 1280 --height 720 --fps 30
+    python record_rgbd_to_bag.py
+    python record_rgbd_to_bag.py --duration 10
+    python record_rgbd_to_bag.py --width 1280 --height 720 --fps 30
 """
 
 import argparse
@@ -87,7 +87,7 @@ def main():
             "depth_scale_m_per_unit": depth_scale,
             "color_intrinsics": intrinsics_to_dict(color_profile.get_intrinsics()),
             "depth_intrinsics": intrinsics_to_dict(depth_profile.get_intrinsics()),
-            "note": "Use export_bag_rgbd.py to convert this bag to mp4/png outputs.",
+            "note": "Use export_rgbd_bag_to_videos.py to convert this bag to mp4/png outputs.",
         }
         metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
@@ -110,7 +110,7 @@ def main():
                 color_frame = frames.get_color_frame()
                 if color_frame:
                     color = np.asanyarray(color_frame.get_data())
-                    cv2.imshow("record_rgbd_bag preview (q=quit)", color)
+                    cv2.imshow("record_rgbd_to_bag preview (q=quit)", color)
                     if cv2.waitKey(1) & 0xFF == ord("q"):
                         break
 

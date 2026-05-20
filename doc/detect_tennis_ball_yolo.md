@@ -1,4 +1,4 @@
-# camera_ball.py 详细说明
+# detect_tennis_ball_yolo.py 详细说明
 
 RealSense D455 + YOLOv8 网球检测，输出球相对相机的三维位置（camera body frame）。
 

@@ -1,5 +1,5 @@
 """
-export_bag_rgbd.py
+export_rgbd_bag_to_videos.py
 
 Convert a RealSense .bag recording to RGB/depth outputs.
 
@@ -11,8 +11,8 @@ Outputs per bag:
   metadata.json   - export settings and stream metadata
 
 Usage:
-    python export_bag_rgbd.py recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag
-    python export_bag_rgbd.py recordings/test.bag --no-depth-png
+    python export_rgbd_bag_to_videos.py recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag
+    python export_rgbd_bag_to_videos.py recordings/test.bag --no-depth-png
 """
 
 import argparse

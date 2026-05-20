@@ -26,22 +26,22 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ## Running
 
 ```bash
-bash run.sh                              # YOLO detector, with visualization
-bash run.sh --no-viz                     # YOLO detector, headless
-bash run.sh --model models/yolo11m.pt    # switch YOLO model
+bash run_tennis_ball_yolo.sh                              # YOLO detector, with visualization
+bash run_tennis_ball_yolo.sh --no-viz                     # YOLO detector, headless
+bash run_tennis_ball_yolo.sh --model models/yolo11m.pt    # switch YOLO model
 
-bash run_color.sh                        # HSV colour detector, with visualization
-bash run_color.sh --no-viz               # HSV detector, headless
-bash run_color.sh --show-mask            # show binary HSV mask (for HSV tuning)
-bash run_color.sh --h-low 30 --h-high 75 # custom HSV hue range
+bash run_tennis_ball_hsv.sh                        # HSV colour detector, with visualization
+bash run_tennis_ball_hsv.sh --no-viz               # HSV detector, headless
+bash run_tennis_ball_hsv.sh --show-mask            # show binary HSV mask (for HSV tuning)
+bash run_tennis_ball_hsv.sh --h-low 30 --h-high 75 # custom HSV hue range
 ```
 
-Both scripts kill stale `camera_ball` processes before starting.
+Launcher scripts kill stale camera detector processes before starting.
 
 Direct invocation (without the launcher scripts):
 ```bash
-python camera_ball.py --no-viz --model models/yolo11m.pt --imgsz 480
-python camera_ball_color.py --no-viz --no-ema
+python detect_tennis_ball_yolo.py --no-viz --model models/yolo11m.pt --imgsz 480
+python detect_tennis_ball_hsv.py --no-viz --no-ema
 ```
 
 ### test-ball.py (Livox Mid-360 + ROS2)
@@ -56,13 +56,13 @@ First run auto-downloads `yolov8n.pt` (~6MB). Press `q` or `Ctrl+C` to quit.
 
 Three main detection scripts sharing the `transform/` package:
 
-- **`camera_ball.py`** — RealSense D455 + YOLOv8; optional LCM publishing
-- **`camera_ball_color.py`** — RealSense D455 + HSV colour segmentation; visual depth (`fx*R/r_px`) fused with sensor depth; no GPU required
+- **`detect_tennis_ball_yolo.py`** — RealSense D455 + YOLOv8; optional LCM publishing
+- **`detect_tennis_ball_hsv.py`** — RealSense D455 + HSV colour segmentation; visual depth (`fx*R/r_px`) fused with sensor depth; no GPU required
 - **`test-ball.py`** — Livox Mid-360 LiDAR; requires ROS2
 
 Models live in `models/` (gitignored; auto-downloaded on first use).
 
-### Threading model (camera_ball.py)
+### Threading model (detect_tennis_ball_yolo.py)
 
 Producer-consumer design with two threads:
 - **Main thread**: `pipeline.wait_for_frames()` (releases GIL) → swaps `buf_frames` reference (no copy) → `cv2.imshow` from `disp_frame`
@@ -72,7 +72,7 @@ YOLO worker attempts `SCHED_FIFO` real-time scheduling (needs `CAP_SYS_NICE`), f
 
 `COAST_FRAMES = 10`: on missed detections, the last bbox is held for up to 10 frames (shown in orange as "Coast").
 
-### Data flow (camera_ball.py each frame)
+### Data flow (detect_tennis_ball_yolo.py each frame)
 
 1. RealSense pipeline → raw frameset (reference swap, no copy)
 2. color.copy() + depth_arr.copy() in YOLO thread
@@ -102,8 +102,8 @@ YOLO worker attempts `SCHED_FIFO` real-time scheduling (needs `CAP_SYS_NICE`), f
 ## Transform Package
 
 `transform/camera_to_base.py` — provides:
-- `optical_to_body(p_optical)`: optical frame (Z-fwd, X-right, Y-down) → body frame (X-fwd, Y-left, Z-up). Used by `camera_ball.py`.
-- `transform_point_camera_to_base(p_cam, q_wy, q_wr, q_wp, q_head)`: kinematic chain to pelvis frame (not used by `camera_ball.py` currently).
+- `optical_to_body(p_optical)`: optical frame (Z-fwd, X-right, Y-down) → body frame (X-fwd, Y-left, Z-up). Used by `detect_tennis_ball_yolo.py`.
+- `transform_point_camera_to_base(p_cam, q_wy, q_wr, q_wp, q_head)`: kinematic chain to pelvis frame (not used by `detect_tennis_ball_yolo.py` currently).
 
 `transform/mid360_to_base.py` — used by `test-ball.py`.
 
@@ -126,7 +126,7 @@ pelvis → waist_yaw(Rz) → waist_roll(Rx) → waist_pitch(Ry) → head(Ry) →
 
 ## Key Tuning Constants
 
-All in `camera_ball.py` top-level:
+All in `detect_tennis_ball_yolo.py` top-level:
 
 | Constant | Default | Effect |
 |---|---|---|
@@ -139,5 +139,5 @@ All in `camera_ball.py` top-level:
 
 ## Docs
 
-- `doc/core_logic.md` — per-function walkthrough of `camera_ball.py`
+- `doc/core_logic.md` — per-function walkthrough of `detect_tennis_ball_yolo.py`
 - `doc/alignment.md` — full explanation of the RGB↔Depth coordinate alignment math

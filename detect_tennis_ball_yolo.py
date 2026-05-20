@@ -1,14 +1,14 @@
 """
-camera_ball.py
+detect_tennis_ball_yolo.py
 
 RealSense D455 + YOLOv8 tennis ball detection.
 Outputs ball position in camera body frame (X-forward, Y-left, Z-up).
 
 Usage:
-    python camera_ball.py              # with OpenCV visualization
-    python camera_ball.py --no-viz     # headless
-    python camera_ball.py --no-ema     # disable EMA smoothing
-    python camera_ball.py --model models/yolo11m.pt --imgsz 480
+    python detect_tennis_ball_yolo.py              # with OpenCV visualization
+    python detect_tennis_ball_yolo.py --no-viz     # headless
+    python detect_tennis_ball_yolo.py --no-ema     # disable EMA smoothing
+    python detect_tennis_ball_yolo.py --model models/yolo11m.pt --imgsz 480
 
 LCM publishing (if lcm + lcm_types available):
     channel: camera_ball_lcmt, coords in camera body frame

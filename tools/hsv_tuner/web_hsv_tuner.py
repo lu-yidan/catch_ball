@@ -1,5 +1,5 @@
 """
-tune_hsv_web.py
+web_hsv_tuner.py
 
 Web-based HSV + MOG2 tuner for D455.
 Streams a 2×2 diagnostic panel as MJPEG to the browser.
@@ -14,12 +14,12 @@ Four panels (same as tune_hsv.py):
 Usage:
     # Live camera:
     conda activate catchball
-    python tools/hsv_tuner/tune_hsv_web.py
-    python tools/hsv_tuner/tune_hsv_web.py --port 5000 --width 848 --height 480
+    python tools/hsv_tuner/web_hsv_tuner.py
+    python tools/hsv_tuner/web_hsv_tuner.py --port 5000 --width 848 --height 480
 
     # Recorded video (no camera required):
-    python tools/hsv_tuner/tune_hsv_web.py --video recordings/color_video.mp4
-    python tools/hsv_tuner/tune_hsv_web.py --video recordings/color_video.mp4 --port 5001
+    python tools/hsv_tuner/web_hsv_tuner.py --video recordings/color_video.mp4
+    python tools/hsv_tuner/web_hsv_tuner.py --video recordings/color_video.mp4 --port 5001
 
     # then open  http://localhost:5000  in any browser
 """
@@ -179,7 +179,7 @@ def _html():
     <hr class="divider">
 {'<div class="vid-ctrl"><div class="row"><label>帧 <span id="fidx">0</span> / ' + str(_nf-1) + '</label><input type="range" id="fslider" min="0" max="' + str(max(_nf-1,1)) + '" value="0" oninput="seekTo(this.value)"></div><div class="vid-btns"><button onclick="stepFrame(-10)">«10</button><button onclick="stepFrame(-1)">«1</button><button id="playbtn" onclick="togglePlay()">▶ 播放</button><button onclick="stepFrame(1)">1»</button><button onclick="stepFrame(10)">10»</button></div><p class="note" style="margin-top:6px">MOG2 顺序播放时有效；跳帧后自动重置</p></div><hr class="divider">' if _vm else ''}
     <button onclick="copy()">复制当前参数</button>
-    <p class="note">可直接粘贴到 run_color.sh / run_dual_hsv.sh 命令后</p>
+    <p class="note">可直接粘贴到 run_tennis_ball_hsv.sh / run_tennis_and_blue_disk_hsv.sh 命令后</p>
     <pre id="out">—</pre>
   </div>
   <div class="img-wrap">

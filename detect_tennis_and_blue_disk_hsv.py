@@ -1,5 +1,5 @@
 """
-camera_ball_dual_hsv.py
+detect_tennis_and_blue_disk_hsv.py
 
 RealSense D455 dual HSV detector:
   - tennis ball: HSV circle detection + visual/sensor depth fusion
@@ -8,9 +8,9 @@ RealSense D455 dual HSV detector:
 Outputs both positions in camera body frame (X-forward, Y-left, Z-up).
 
 Usage:
-    python camera_ball_dual_hsv.py
-    python camera_ball_dual_hsv.py --no-viz
-    python camera_ball_dual_hsv.py --show-mask
+    python detect_tennis_and_blue_disk_hsv.py
+    python detect_tennis_and_blue_disk_hsv.py --no-viz
+    python detect_tennis_and_blue_disk_hsv.py --show-mask
 """
 
 import argparse
@@ -109,7 +109,7 @@ def detect_colored_circle(
 
 
 def color_pixel_to_depth_pixel(cx, cy, depth_arr, depth_scale, color_intrin, depth_intrin, color_to_depth_extr):
-    """Map a color pixel to a depth pixel using the same lightweight mapping as camera_ball_color.py."""
+    """Map a color pixel to a depth pixel using the same lightweight mapping as detect_tennis_ball_hsv.py."""
     dh, dw = depth_arr.shape
     ndcx = (cx - color_intrin.ppx) / color_intrin.fx
     ndcy = (cy - color_intrin.ppy) / color_intrin.fy

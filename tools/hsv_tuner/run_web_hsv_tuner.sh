@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# 启动 Web HSV/MOG2 调参工具。
+#
+# 用法：
+#   bash tools/hsv_tuner/run_web_hsv_tuner.sh
+#   bash tools/hsv_tuner/run_web_hsv_tuner.sh --port 5001
+#   bash tools/hsv_tuner/run_web_hsv_tuner.sh --video recordings/rgbd_YYYYMMDD_HHMMSS/color.mp4
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PYTHON="/home/ydlu/miniconda3/envs/catchball/bin/python"
+
+echo "[run_web_hsv_tuner.sh] Killing stale camera/tuner processes..."
+STALE_PATTERN="detect_tennis_ball_yolo.py|detect_tennis_ball_hsv.py|detect_tennis_and_blue_disk_hsv.py|web_hsv_tuner.py"
+STALE_PIDS=$(pgrep -f "$STALE_PATTERN" 2>/dev/null || true)
+if [ -n "$STALE_PIDS" ]; then
+    echo "[run_web_hsv_tuner.sh] Found PIDs: $STALE_PIDS — sending SIGTERM..."
+    kill $STALE_PIDS 2>/dev/null || true
+    sleep 2
+    STILL_ALIVE=$(pgrep -f "$STALE_PATTERN" 2>/dev/null || true)
+    if [ -n "$STILL_ALIVE" ]; then
+        echo "[run_web_hsv_tuner.sh] Force killing: $STILL_ALIVE"
+        kill -9 $STILL_ALIVE 2>/dev/null || true
+        sleep 1
+    fi
+else
+    echo "[run_web_hsv_tuner.sh] No stale processes found."
+fi
+
+if ls /dev/video* &>/dev/null; then
+    BUSY=$(fuser /dev/video* 2>/dev/null || true)
+    if [ -n "$BUSY" ]; then
+        echo "[run_web_hsv_tuner.sh] Camera devices still busy ($BUSY), waiting 3s..."
+        sleep 3
+    fi
+fi
+
+echo "[run_web_hsv_tuner.sh] Starting web_hsv_tuner.py $*"
+cd "$REPO_ROOT"
+exec "$PYTHON" -u "$SCRIPT_DIR/web_hsv_tuner.py" "$@"

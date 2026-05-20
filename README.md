@@ -27,7 +27,7 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ## 两种检测方案
 
-| | YOLO 方案 (`camera_ball.py`) | HSV 方案 (`camera_ball_color.py`) |
+| | YOLO 方案 (`detect_tennis_ball_yolo.py`) | HSV 方案 (`detect_tennis_ball_hsv.py`) |
 |--|--|--|
 | 检测原理 | 神经网络目标检测 | HSV 色块分割 + 圆形拟合 |
 | 速度 | ~60 fps（GPU） | >200 fps（CPU） |
@@ -44,9 +44,9 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 ### YOLO 方案
 
 ```bash
-bash run.sh                              # 带可视化
-bash run.sh --no-viz                     # 无窗口
-bash run.sh --model models/yolo11m.pt    # 精度更高的模型
+bash run_tennis_ball_yolo.sh                              # 带可视化
+bash run_tennis_ball_yolo.sh --no-viz                     # 无窗口
+bash run_tennis_ball_yolo.sh --model models/yolo11m.pt    # 精度更高的模型
 ```
 
 首次运行自动下载 `models/yolov8n.pt`（约 6MB）。
@@ -54,23 +54,23 @@ bash run.sh --model models/yolo11m.pt    # 精度更高的模型
 ### HSV 方案
 
 ```bash
-bash run_color.sh                              # 1280×720 @30fps（默认，最远 ~6.8m）
-bash run_color.sh --width 848 --height 480     # 848×480  @60fps（最远 ~5.6m）
-bash run_color.sh --width 640 --height 480     # 640×480  @90fps（最远 ~4.3m）
-bash run_color.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
-bash run_color.sh --h-low 30 --h-high 75       # 手动指定 HSV 色相范围
-bash run_color.sh --no-traj                    # 关闭轨迹预测叠加层
-bash run_color.sh --record                     # 录制带标注视频（自动命名）
-bash run_color.sh --record out.mp4             # 录制到指定文件
-bash run_color.sh --no-viz --record out.mp4    # 无窗口录制（后台模式）
+bash run_tennis_ball_hsv.sh                              # 1280×720 @30fps（默认，最远 ~6.8m）
+bash run_tennis_ball_hsv.sh --width 848 --height 480     # 848×480  @60fps（最远 ~5.6m）
+bash run_tennis_ball_hsv.sh --width 640 --height 480     # 640×480  @90fps（最远 ~4.3m）
+bash run_tennis_ball_hsv.sh --show-mask                  # 显示 HSV 二值掩码（调参用）
+bash run_tennis_ball_hsv.sh --h-low 30 --h-high 75       # 手动指定 HSV 色相范围
+bash run_tennis_ball_hsv.sh --no-traj                    # 关闭轨迹预测叠加层
+bash run_tennis_ball_hsv.sh --record                     # 录制带标注视频（自动命名）
+bash run_tennis_ball_hsv.sh --record out.mp4             # 录制到指定文件
+bash run_tennis_ball_hsv.sh --no-viz --record out.mp4    # 无窗口录制（后台模式）
 ```
 
 ### Web HSV 调参
 
 ```bash
-bash tools/hsv_tuner/run_tune_hsv_web.sh
-bash tools/hsv_tuner/run_tune_hsv_web.sh --port 5001
-bash tools/hsv_tuner/run_tune_hsv_web.sh --video recordings/rgbd_YYYYMMDD_HHMMSS/color.mp4
+bash tools/hsv_tuner/run_web_hsv_tuner.sh
+bash tools/hsv_tuner/run_web_hsv_tuner.sh --port 5001
+bash tools/hsv_tuner/run_web_hsv_tuner.sh --video recordings/rgbd_YYYYMMDD_HHMMSS/color.mp4
 ```
 
 启动后在浏览器打开 `http://localhost:5000`。工具提供 HSV、MOG2 运动滤波、最小半径和圆形度滑条，可用实时 D455 画面或录制视频调参。
@@ -78,15 +78,15 @@ bash tools/hsv_tuner/run_tune_hsv_web.sh --video recordings/rgbd_YYYYMMDD_HHMMSS
 ### 网球 + 蓝色末端双目标 HSV
 
 ```bash
-bash run_dual_hsv.sh                    # 同时识别网球和蓝色末端圆片
-bash run_dual_hsv.sh --no-viz           # 无窗口，只输出坐标
-bash run_dual_hsv.sh --show-mask        # 显示原图、网球 mask、蓝色 mask
+bash run_tennis_and_blue_disk_hsv.sh                    # 同时识别网球和蓝色末端圆片
+bash run_tennis_and_blue_disk_hsv.sh --no-viz           # 无窗口，只输出坐标
+bash run_tennis_and_blue_disk_hsv.sh --show-mask        # 显示原图、网球 mask、蓝色 mask
 ```
 
 默认蓝色 HSV 来自样例图：`H=[94,104] S>=80 V>=35`。如果蓝色暗部缺失，可以放宽：
 
 ```bash
-bash run_dual_hsv.sh --show-mask --blue-h-low 86 --blue-h-high 108 --blue-s-min 35 --blue-v-min 25
+bash run_tennis_and_blue_disk_hsv.sh --show-mask --blue-h-low 86 --blue-h-high 108 --blue-s-min 35 --blue-v-min 25
 ```
 
 输出坐标均为 camera body frame `(x, y, z)`。网球位置使用 HSV 圆检测 + 视觉/深度融合；蓝色末端圆片使用 HSV 找中心，再用 RealSense depth patch 中值反投影。蓝色圆片默认直径 `0.026m`。
@@ -98,11 +98,11 @@ bash run_dual_hsv.sh --show-mask --blue-h-low 86 --blue-h-high 108 --blue-s-min 
 快速录制可播放视频：
 
 ```bash
-bash tools/recording/run_record.sh                         # 录制 RGB + depth，带预览
-bash tools/recording/run_record.sh --duration 10           # 录制 10 秒
-bash tools/recording/run_record.sh --width 848 --height 480 --fps 60
-bash tools/recording/run_record.sh --no-preview            # 无窗口录制
-bash tools/recording/run_record.sh --no-depth-png          # 只保存可播放视频
+bash tools/recording/run_record_rgbd_to_videos.sh                         # 录制 RGB + depth，带预览
+bash tools/recording/run_record_rgbd_to_videos.sh --duration 10           # 录制 10 秒
+bash tools/recording/run_record_rgbd_to_videos.sh --width 848 --height 480 --fps 60
+bash tools/recording/run_record_rgbd_to_videos.sh --no-preview            # 无窗口录制
+bash tools/recording/run_record_rgbd_to_videos.sh --no-depth-png          # 只保存可播放视频
 ```
 
 默认输出到 `recordings/rgbd_YYYYMMDD_HHMMSS/`：
@@ -117,10 +117,10 @@ bash tools/recording/run_record.sh --no-depth-png          # 只保存可播放�
 严格 1280×720 @30fps 录制推荐先保存 RealSense 原生 `.bag`，再离线导出视频和 depth PNG：
 
 ```bash
-bash tools/recording/run_record_bag.sh --duration 10                 # 实时严格录制 .bag
-bash tools/recording/run_record_bag.sh --duration 10 --preview       # 可选轻量 RGB 预览
-bash tools/recording/run_export_bag.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag
-bash tools/recording/run_export_bag.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag --no-depth-png
+bash tools/recording/run_record_rgbd_to_bag.sh --duration 10                 # 实时严格录制 .bag
+bash tools/recording/run_record_rgbd_to_bag.sh --duration 10 --preview       # 可选轻量 RGB 预览
+bash tools/recording/run_export_rgbd_bag_to_videos.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag
+bash tools/recording/run_export_rgbd_bag_to_videos.sh recordings/rgbd_bag_YYYYMMDD_HHMMSS.bag --no-depth-png
 ```
 
 `.bag` 录制阶段只写 RealSense 原始流，避免实时 MP4 编码、depth 伪彩色、PNG 压缩和 depth 对齐拖慢采集。离线导出目录默认与 `.bag` 同名，例如 `recordings/rgbd_bag_YYYYMMDD_HHMMSS/`。
@@ -146,7 +146,7 @@ D_max = fx × BALL_RADIUS / MIN_RADIUS_PX
 
 ## 轨迹预测（HSV 方案）
 
-`camera_ball_color.py` 内置弹道轨迹预测，默认开启，无需额外配置。
+`detect_tennis_ball_hsv.py` 内置弹道轨迹预测，默认开启，无需额外配置。
 
 ### 原理
 
@@ -199,18 +199,18 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 
 ```text
 .
-├── camera_ball.py          # YOLO 检测
-├── camera_ball_color.py    # HSV 检测 + 轨迹预测
-├── camera_ball_dual_hsv.py # HSV 同时检测网球和蓝色末端
-├── run.sh                  # YOLO 启动脚本
-├── run_color.sh            # HSV 启动脚本
-├── run_dual_hsv.sh         # 双目标 HSV 启动脚本
-├── models/                 # YOLO 权重文件（gitignore）
-├── recordings/             # RGB-D 录制输出（gitignore）
-├── tools/hsv_tuner/        # Web HSV/MOG2 调参工具
-├── tools/recording/        # RGB-D 录制和 .bag 导出脚本
-├── transform/              # 坐标变换
-└── doc/                    # 说明文档
+├── detect_tennis_ball_yolo.py            # YOLO 检测
+├── detect_tennis_ball_hsv.py             # HSV 检测 + 轨迹预测
+├── detect_tennis_and_blue_disk_hsv.py    # HSV 同时检测网球和蓝色末端
+├── run_tennis_ball_yolo.sh               # YOLO 启动脚本
+├── run_tennis_ball_hsv.sh                # HSV 启动脚本
+├── run_tennis_and_blue_disk_hsv.sh       # 双目标 HSV 启动脚本
+├── models/                               # YOLO 权重文件（gitignore）
+├── recordings/                           # RGB-D 录制输出（gitignore）
+├── tools/hsv_tuner/                      # Web HSV/MOG2 调参工具
+├── tools/recording/                      # RGB-D 录制和 .bag 导出脚本
+├── transform/                            # 坐标变换
+└── doc/                                  # 说明文档
 ```
 
 ---
@@ -235,14 +235,14 @@ optical frame (RealSense 输出)     camera body frame (输出)
 - **主线程**：`pipeline.wait_for_frames()`（释放 GIL）+ 引用交换 + `cv2.imshow`
 - **YOLO 线程**：帧拷贝 → resize → GPU 推理 → Color→Depth 三步像素映射 → 深度采样 → EMA 平滑 → LCM 发布
 
-`camera_ball.py` 主要改进点（相较旧版）：
+`detect_tennis_ball_yolo.py` 主要改进点（相较旧版）：
 
 - **去掉 `align.process()`**：全图深度对齐耗时 ~50ms 且持有 GIL，改为对球心单点做精确 Color→Depth 映射（<0.1ms）
 - **Color→Depth 三步映射**：修正 FOV 差异 + 基线视差，消除旧版最大 ~14cm 横向误差
 - **BALL_RADIUS = 0.033m**：网球半径，深度传感器测前表面，加此偏移得球心
 - **EMA gate 超限时重置**：旧版静默跳过导致球飞远后 EMA 永久冻结
 
-详见 `doc/camera_ball.md`。
+详见 `doc/detect_tennis_ball_yolo.md`。
 
 ---
 
