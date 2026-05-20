@@ -91,6 +91,51 @@ bash run_tennis_and_blue_disk_hsv.sh --show-mask --blue-h-low 86 --blue-h-high 1
 
 输出坐标均为 camera body frame `(x, y, z)`。网球位置使用 HSV 圆检测 + 视觉/深度融合；蓝色末端圆片使用 HSV 找中心，再用 RealSense depth patch 中值反投影。蓝色圆片默认直径 `0.026m`。
 
+### 网球 + 蓝色末端 + AprilTag
+
+```bash
+bash run_tennis_blue_disk_apriltag.sh
+bash run_tennis_blue_disk_apriltag.sh --show-mask
+bash run_tennis_blue_disk_apriltag.sh --no-viz
+```
+
+默认识别 `tag36h11` 的 `tag0`，边长 `0.25m`。AprilTag 不再每帧检测，默认每 3 帧检测一次并复用最近位姿，减少掉帧。脚本会输出：
+
+- `tennis_tag` / `blue_tag`：网球、蓝色圆片相对 AprilTag 坐标系的位置
+- `tennis_center` / `blue_center`：当提供 AprilTag 在中心点坐标系下的位姿时，目标相对中心点的位置
+
+如果已知 AprilTag 原点在中心点坐标系下的位置：
+
+```bash
+bash run_tennis_blue_disk_apriltag.sh --tag-origin-in-center 0.2 0.0 0.5
+```
+
+如果已知中心点在 AprilTag 坐标系下的位置，例如 `50 -30 -27 cm`，用：
+
+```bash
+bash run_tennis_blue_disk_apriltag.sh --center-origin-in-tag-cm 50 -30 -27
+```
+
+这会在图像中把中心点画成红点，并画出中心点坐标系的 `X/Y/Z` 三轴；同时在网球和蓝色圆片旁标出它们相对中心点的位置。坐标按 `p_center = p_tag - center_origin_in_tag` 输出（默认中心点坐标轴和 tag 坐标轴平行）。
+
+如果中心点坐标系和 tag 坐标系还有姿态差，也可以加 RPY（角度制）：
+
+```bash
+bash run_tennis_blue_disk_apriltag.sh \
+  --tag-origin-in-center 0.2 0.0 0.5 \
+  --tag-rpy-in-center 0 0 90
+```
+
+坐标变换为 `p_center = R_center_tag @ p_tag + tag_origin_in_center`。
+
+如果 AprilTag 仍然导致帧率太低，可以降低分辨率或进一步降低 tag 检测频率：
+
+```bash
+bash run_tennis_blue_disk_apriltag.sh --width 848 --height 480 --tag-every 5
+```
+
+中心点三轴默认长度 `0.10m`，可通过 `--center-axis-len` 调整。
+
 按 `q` 或 `Ctrl+C` 退出。
 
 ### RGB-D 录制
@@ -202,9 +247,11 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 ├── detect_tennis_ball_yolo.py            # YOLO 检测
 ├── detect_tennis_ball_hsv.py             # HSV 检测 + 轨迹预测
 ├── detect_tennis_and_blue_disk_hsv.py    # HSV 同时检测网球和蓝色末端
+├── detect_tennis_blue_disk_apriltag.py   # 网球/蓝色末端相对 AprilTag/中心点坐标
 ├── run_tennis_ball_yolo.sh               # YOLO 启动脚本
 ├── run_tennis_ball_hsv.sh                # HSV 启动脚本
 ├── run_tennis_and_blue_disk_hsv.sh       # 双目标 HSV 启动脚本
+├── run_tennis_blue_disk_apriltag.sh      # 三目标坐标转换启动脚本
 ├── models/                               # YOLO 权重文件（gitignore）
 ├── recordings/                           # RGB-D 录制输出（gitignore）
 ├── tools/hsv_tuner/                      # Web HSV/MOG2 调参工具

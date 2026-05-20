@@ -34,6 +34,8 @@ bash run_tennis_ball_hsv.sh                        # HSV colour detector, with v
 bash run_tennis_ball_hsv.sh --no-viz               # HSV detector, headless
 bash run_tennis_ball_hsv.sh --show-mask            # show binary HSV mask (for HSV tuning)
 bash run_tennis_ball_hsv.sh --h-low 30 --h-high 75 # custom HSV hue range
+bash run_tennis_blue_disk_apriltag.sh              # tennis/blue disk relative to AprilTag
+bash run_tennis_blue_disk_apriltag.sh --center-origin-in-tag-cm 50 -30 -27
 ```
 
 Launcher scripts kill stale camera detector processes before starting.
@@ -58,6 +60,7 @@ Three main detection scripts sharing the `transform/` package:
 
 - **`detect_tennis_ball_yolo.py`** — RealSense D455 + YOLOv8; optional LCM publishing
 - **`detect_tennis_ball_hsv.py`** — RealSense D455 + HSV colour segmentation; visual depth (`fx*R/r_px`) fused with sensor depth; no GPU required
+- **`detect_tennis_blue_disk_apriltag.py`** — HSV tennis + blue disk plus AprilTag 36h11 tag0 pose; reports target coordinates in tag/centre frames
 - **`test-ball.py`** — Livox Mid-360 LiDAR; requires ROS2
 
 Models live in `models/` (gitignored; auto-downloaded on first use).
