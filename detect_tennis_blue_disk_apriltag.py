@@ -35,7 +35,50 @@ Usage:
 """
 
 import argparse
+import json
+import os
 import time
+from pathlib import Path
+
+_json_write_seq = 0
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Windows-safe JSON update with retry (avoids PermissionError on replace)."""
+    global _json_write_seq
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
+    _json_write_seq += 1
+    tmp = path.with_name(f".{path.stem}.{os.getpid()}.{_json_write_seq}.tmp")
+
+    last_err: Exception | None = None
+    for attempt in range(10):
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                f.write(text)
+                f.flush()
+                os.fsync(f.fileno())
+            try:
+                os.replace(tmp, path)
+            except PermissionError:
+                with path.open("w", encoding="utf-8") as f:
+                    f.write(text)
+                    f.flush()
+                    os.fsync(f.fileno())
+            return
+        except OSError as exc:
+            last_err = exc
+            time.sleep(0.03 * (attempt + 1))
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
+
+    if last_err is not None:
+        raise last_err
 
 import cv2
 import numpy as np
@@ -275,6 +318,118 @@ def draw_center_axes(image, axis_points_tag, r_tag_to_opt, t_tag_in_opt, color_i
     return origin_px
 
 
+def _append_blue_json(payload, blue_center, blue_tag, blue_depth, blue_src, blue_diameter_m):
+    if blue_center is not None and np.all(np.isfinite(np.asarray(blue_center, dtype=float))):
+        bc = np.asarray(blue_center, dtype=float)
+        payload["blue_center_m"] = bc.tolist()
+        payload["blue_center_mm"] = (bc * 1000.0).tolist()
+        payload["blue_valid"] = DEPTH_MIN < float(blue_depth) < DEPTH_MAX and blue_src != "—"
+    else:
+        payload["blue_valid"] = False
+    if blue_tag is not None:
+        bt = np.asarray(blue_tag, dtype=float)
+        payload["blue_tag_m"] = bt.tolist()
+        payload["blue_tag_mm"] = (bt * 1000.0).tolist()
+    payload["blue_depth_m"] = float(blue_depth)
+    payload["blue_depth_src"] = blue_src
+    if blue_diameter_m is not None:
+        payload["blue_diameter_m"] = float(blue_diameter_m)
+
+
+def write_target_json(
+    path,
+    tennis_center,
+    tennis_tag,
+    tag_status,
+    tag_age,
+    tennis_depth,
+    tennis_src,
+    tennis_radius_m,
+    grasp_ready: bool = False,
+    stationary_elapsed_s: float = 0.0,
+    flicker_mm: float = 0.0,
+    speed_mm_s: float | None = None,
+    center_origin_in_tag_m: tuple[float, float, float] | None = None,
+    blue_center=None,
+    blue_tag=None,
+    blue_depth: float = 0.0,
+    blue_src: str = "—",
+    blue_diameter_m: float | None = None,
+):
+    """Write the latest ball target for external grasp planning."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    valid = (
+        tennis_center is not None
+        and np.all(np.isfinite(tennis_center))
+        and DEPTH_MIN < float(tennis_depth) < DEPTH_MAX
+        and tennis_src != "—"
+    )
+    if not valid:
+        payload = {
+            "schema": "catch_ball_target_v1",
+            "frame": "soft_arm_center",
+            "units": "m",
+            "timestamp_s": time.time(),
+            "valid": False,
+            "grasp_ready": False,
+            "stationary_elapsed_s": float(stationary_elapsed_s),
+            "flicker_mm": float(flicker_mm),
+            "reason": "no valid tennis ball depth/center",
+            "tag_status": tag_status,
+            "tag_age_frames": int(tag_age),
+            "depth_m": float(tennis_depth),
+            "depth_src": tennis_src,
+        }
+        if center_origin_in_tag_m is not None:
+            payload["center_origin_in_tag_m"] = list(center_origin_in_tag_m)
+            payload["center_origin_in_tag_mm"] = [
+                float(x) * 1000.0 for x in center_origin_in_tag_m
+            ]
+        _append_blue_json(payload, blue_center, blue_tag, blue_depth, blue_src, blue_diameter_m)
+        _atomic_write_json(path, payload)
+        return
+
+    tennis_center = np.asarray(tennis_center, dtype=float)
+    tennis_tag_arr = (
+        np.asarray(tennis_tag, dtype=float) if tennis_tag is not None else None
+    )
+    payload = {
+        "schema": "catch_ball_target_v1",
+        "frame": "soft_arm_center",
+        "units": "m",
+        "timestamp_s": time.time(),
+        "valid": True,
+        "tag_status": tag_status,
+        "tag_age_frames": int(tag_age),
+        "tennis_center_m": tennis_center.tolist(),
+        "tennis_center_mm": (tennis_center * 1000.0).tolist(),
+        "tennis_tag_m": (
+            tennis_tag_arr.tolist() if tennis_tag_arr is not None else None
+        ),
+        "tennis_tag_mm": (
+            (tennis_tag_arr * 1000.0).tolist() if tennis_tag_arr is not None else None
+        ),
+        "ball_radius_m": float(tennis_radius_m),
+        "ball_radius_mm": float(tennis_radius_m * 1000.0),
+        "ball_diameter_m": float(2.0 * tennis_radius_m),
+        "depth_m": float(tennis_depth),
+        "depth_src": tennis_src,
+        "grasp_ready": bool(grasp_ready),
+        "stationary_elapsed_s": float(stationary_elapsed_s),
+        "flicker_mm": float(flicker_mm),
+    }
+    if speed_mm_s is not None:
+        payload["speed_mm_s"] = float(speed_mm_s)
+    if center_origin_in_tag_m is not None:
+        payload["center_origin_in_tag_m"] = list(center_origin_in_tag_m)
+        payload["center_origin_in_tag_mm"] = [
+            float(x) * 1000.0 for x in center_origin_in_tag_m
+        ]
+    _append_blue_json(payload, blue_center, blue_tag, blue_depth, blue_src, blue_diameter_m)
+    _atomic_write_json(path, payload)
+
+
 def process_target(
     color,
     depth_arr,
@@ -327,7 +482,8 @@ def process_target(
         depth_m = surface_depth
         depth_src = "sensor" if DEPTH_MIN < depth_m < DEPTH_MAX else "—"
 
-    p_body = deproject_body(cx, cy, depth_m, color_intrin)
+    if DEPTH_MIN < depth_m < DEPTH_MAX:
+        p_body = deproject_body(cx, cy, depth_m, color_intrin)
     return (cx, cy, r_px), p_body, body_to_optical(p_body), depth_m, depth_src, mask
 
 
@@ -375,6 +531,11 @@ def main():
     parser.add_argument("--tennis-circularity", type=float, default=0.60)
     parser.add_argument("--blue-circularity", type=float, default=0.30)
     parser.add_argument("--depth-radius", type=int, default=DEPTH_SAMPLE_RADIUS, help="depth median patch radius in pixels")
+    parser.add_argument(
+        "--output-json",
+        type=Path,
+        help="write latest tennis ball target in soft-arm centre frame for grasp_planning.py",
+    )
     args = parser.parse_args()
 
     viz = not args.no_viz
@@ -525,6 +686,17 @@ def main():
             fps.tick()
             tag_age = frame_idx - last_tag_frame
             tag_status = "TAG" if tag_age == 0 else (f"TAG-{tag_age}" if r_tag_to_opt is not None else "NO_TAG")
+            if args.output_json is not None:
+                write_target_json(
+                    args.output_json,
+                    tennis_center,
+                    tennis_tag,
+                    tag_status,
+                    tag_age,
+                    tennis_depth,
+                    tennis_src,
+                    args.tennis_radius,
+                )
             print(f"\r[{tag_status}] "
                   f"tennis_cam={format_point(tennis_ema)} tennis_tag={format_point(tennis_tag)} "
                   f"tennis_center={format_point(tennis_center)}  "

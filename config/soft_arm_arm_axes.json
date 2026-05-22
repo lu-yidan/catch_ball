@@ -1,0 +1,24 @@
+{
+  "comment": "Inverted soft arm: +X lateral, +Y down/main axis, -Z camera. Lateral bend plane XZ is the XOY PCC plane rotated (Z replaces out-of-plane Y). Motor +step pulls along u(phi)=[cos(phi),sin(phi)] in XZ.",
+  "vision_to_arm_scale": [1.0, 1.0, 1.0],
+  "arm_base_mm": [0.0, 0.0, 0.0],
+  "bend_plane": "XZ",
+  "pcc_reference_plane": "XOY",
+  "marker_plane_offset_from_rope_phi_deg": 270,
+  "motor_positive_pull_phi_deg": {
+    "1": 180,
+    "2": 270,
+    "3": 270,
+    "4": 270,
+    "5": 0,
+    "6": 0
+  },
+  "motor_positive_bend_direction_xz": {
+    "1": [-1, 0],
+    "2": [0, -1],
+    "3": [0, -1],
+    "4": [0, -1],
+    "5": [1, 0],
+    "6": [1, 0]
+  }
+}

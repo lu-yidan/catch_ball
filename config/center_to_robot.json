@@ -1,0 +1,13 @@
+{
+  "mode": "tag",
+  "comment": "Run: python calibrate_center_to_robot.py --coord-file ball_target.json (ball at demo grasp pose).",
+  "center_origin_in_tag_cm": [50.0, -30.0, -27.0],
+  "center_origin_in_tag_mm": [500.0, -300.0, -270.0],
+  "tag_axis_scales": [1.0, -1.0, 1.0],
+  "axes": [
+    {"tag": "x", "robot": "x", "scale": 1.0, "offset": 0.0},
+    {"tag": "y", "robot": "y", "scale": -1.0, "offset": 0.0},
+    {"tag": "z", "robot": "z", "scale": 1.0, "offset": 0.0}
+  ],
+  "demo_robot_center_mm": [122.36, -205.32, 853.22]
+}

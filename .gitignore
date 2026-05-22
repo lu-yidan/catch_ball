@@ -37,3 +37,13 @@ Thumbs.db
 
 # 日志
 *.log
+
+# 运行时输出（视觉 / 规划 / 仿真图）
+ball_target.json
+ball_target.json.tmp
+grasp_plan.json
+grasp_plan_v2.json
+grasp_plan_v3.json
+output_v2_sim/
+output_v3_sim/
+output_gp_il_inverseJ/

@@ -240,6 +240,18 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 
 ---
 
+## 软体臂抓取 (v2 / v3)
+
+倒立软体臂绳组规划 + Feetech 执行，球位从 `ball_target.json` 实时读取（与相机坐标一致）。详见 [doc/grasp_pipeline.md](doc/grasp_pipeline.md)。
+
+```bash
+# 终端1：视觉
+python -u run_d435_vision.py
+
+# 终端2：规划 → 仿真图 → 输入 yes 执行
+python -u grasp_plan_execute_v3.py --coord-file ball_target.json --port COM5
+```
+
 ## 文件结构
 
 ```text
@@ -248,6 +260,21 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 ├── detect_tennis_ball_hsv.py             # HSV 检测 + 轨迹预测
 ├── detect_tennis_and_blue_disk_hsv.py    # HSV 同时检测网球和蓝色末端
 ├── detect_tennis_blue_disk_apriltag.py   # 网球/蓝色末端相对 AprilTag/中心点坐标
+├── run_d435_vision.py                    # D435 视觉 → ball_target.json
+├── vision_d435_tracker.py                # 视觉跟踪库
+├── grasp_excute.py                       # 绳组执行 / 运动学
+├── grasp_planning_v2.py                  # v2 规划
+├── grasp_planning_v3.py                  # v3 规划（同 v2 逻辑）
+├── grasp_plan_execute_v2.py              # v2 规划+执行
+├── grasp_plan_execute_v3.py              # v3 规划+仿真+确认执行
+├── simulate_v2_grasp.py                  # v2 仿真
+├── simulate_v3_grasp.py                  # v3 仿真可视化
+├── motor1_4_test.py                      # 第三节 motor1/4 测试
+├── check_inverted_kinematics.py          # 倒立运动学自检
+├── paths.py                              # 仓库路径常量
+├── GP_tennis.py / GP_IL_v4.py            # GP / 演示数据分析（可选）
+├── config/                               # 臂系、标定 JSON
+├── data/demo/                            # 演示角度 CSV
 ├── run_tennis_ball_yolo.sh               # YOLO 启动脚本
 ├── run_tennis_ball_hsv.sh                # HSV 启动脚本
 ├── run_tennis_and_blue_disk_hsv.sh       # 双目标 HSV 启动脚本
@@ -257,7 +284,7 @@ z(t) = az + bz·t + cz·t²  (竖向，二次，自由拟合)
 ├── tools/hsv_tuner/                      # Web HSV/MOG2 调参工具
 ├── tools/recording/                      # RGB-D 录制和 .bag 导出脚本
 ├── transform/                            # 坐标变换
-└── doc/                                  # 说明文档
+└── doc/                                  # 说明文档（含 grasp_pipeline.md）
 ```
 
 ---
